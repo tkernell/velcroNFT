@@ -2,6 +2,8 @@
 
 pragma solidity 0.8.0;
 
-contract UserPool {
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract UserPool is Ownable {
     
 }
