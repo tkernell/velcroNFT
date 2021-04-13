@@ -41,12 +41,22 @@ contract PlanController is Ownable {
         // provider = msg.sender;
     }
     
-    // function approveToken(address token, uint256 _price) public onlyOwner {
-    //     require(!subTokens[token].active); // Require that this token has not already been approved
-    //     // subTokens[token] = subToken(
-    //     //     address(new PToken()))
-    //     subToken memory newSubToken = subToken(address(new PToken()), token, 5, true);
-    // }
+    function approveToken(address token, uint256 _price) public onlyOwner {
+        require(token != address(0));
+        require(!subTokens[token].active); // Require that this token has not already been approved
+        // subTokens[token] = subToken(
+        //     address(new PToken()))
+        // address newSuperToken = address(superTokenFactory.createERC20Wrapper(token, 0, "name", "symbol"));
+        address test = superTokenFactory.getHost();
+        (bool success,) = address(superTokenFactory).call(abi.encode(bytes4(keccak256("getHost()"))));
+        // superTokenFactory.createERC20Wrapper(token, 0, "name", "symbol");
+        superTokenFactory.initializeCustomSuperToken(token);
+        // subToken memory newSubToken = subToken(
+        //     address(new PToken()), 
+        //     address(superTokenFactory.createERC20Wrapper(token)), 
+        //     _price, 
+        //     true);
+    }
     
     // function startSubscription(address token) public {
     //     require(subTokens[token].active);
