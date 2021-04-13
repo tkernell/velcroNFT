@@ -10,8 +10,9 @@ contract SubscriptionNFT is ERC721, Ownable {
     
     constructor() ERC721("Velcro NFT Subsription", "VEL") {}
     
-    function mint(address _to) public onlyOwner {
+    function mint(address _to) public onlyOwner returns(uint256) {
         _mint(_to, counter);
         counter++;
+        return(counter-1);
     }
 }

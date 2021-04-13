@@ -11,4 +11,8 @@ contract PToken is ERC20, Ownable {
     function mint(address _to, uint256 _amount) public onlyOwner {
         _mint(_to, _amount);
     }
+    
+    function burn(address _account, uint256 _amount) public onlyOwner {
+        _burn(_account, _amount);
+    }
 }
