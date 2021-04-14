@@ -3,7 +3,6 @@
 pragma solidity 0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-// import "@superfluid-finance/ethereum-contracts/contracts/superfluid/SuperTokenFactory.sol";
 import { ISuperTokenFactory } from "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperTokenFactory.sol";
 import { ISuperToken } from "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperToken.sol";
 import "./SubscriptionNFT.sol";
@@ -49,9 +48,8 @@ contract PlanController is Ownable {
         require(!subscriptionTokens[_underlyingToken].active); // Require that this token has not already been approved
         // subTokens[token] = subToken(
         //     address(new PToken()))
-        address newSuperToken = address(superTokenFactory.createERC20Wrapper(_underlyingToken, 0, "name", "symbol"));
-        address test = superTokenFactory.getHost();
-        (bool success,) = address(superTokenFactory).call(abi.encode(bytes4(keccak256("getHost()"))));
+        // address newSuperToken = address(superTokenFactory.createERC20Wrapper(_underlyingToken, 0, "name", "symbol"));
+
         // superTokenFactory.createERC20Wrapper(token, 0, "name", "symbol");
         superTokenFactory.initializeCustomSuperToken(_underlyingToken);
         // subToken memory newSubToken = subToken(
@@ -80,6 +78,7 @@ contract PlanController is Ownable {
         
     }
     
-    
-    
+    function createSuperTokenContract() internal returns(address) {
+        
+    }
 }
