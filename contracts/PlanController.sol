@@ -7,6 +7,7 @@ import "./SubscriptionNFT.sol";
 import "./UserPool.sol";
 import "./ProviderPool.sol";
 import "./PToken.sol";
+import "./UserStreamWallet.sol";
 
 contract ISuperTokenFactory {
     /**
@@ -40,6 +41,7 @@ contract PlanController is Ownable {
     address public providerPool;
     uint256 public period;
     ISuperTokenFactory superTokenFactory = ISuperTokenFactory(0x2C90719f25B10Fc5646c82DA3240C76Fa5BcCF34); // Check this address
+    IConstantFlowAgreementV1 constantFlowAgreement = IConstantFlowAgreementV1(address(0));
     
     struct subscriptionToken {
         PToken pToken;     // Placeholder token
@@ -51,11 +53,17 @@ contract PlanController is Ownable {
     struct subUser {
         address underlyingToken;
         uint256 startTimestamp;
+        UserStreamWallet userStreamWallet;
     }
     
     mapping(address => subscriptionToken) public subscriptionTokens;
     // Mapping from NFT Token ID to subUser
     mapping(uint256 => subUser) public subUsers;
+    
+    modifier onlyNftOwner(uint256 _nftId) {
+        require(msg.sender == subNFT.ownerOf(_nftId));
+        _;
+    }
     
     constructor(uint256 _period) {
         period = _period;
@@ -88,10 +96,10 @@ contract PlanController is Ownable {
         require(subscriptionTokens[_underlyingToken].active);
         
         // Mint subscription NFT
-        uint256 nftID = subNFT.mint(msg.sender);
-        // Record parameters for this subscription
-        subUsers[nftID] = subUser(_underlyingToken, block.timestamp);
+        uint256 nftId = _initNewSubscriber(_underlyingToken);
+
         subscriptionToken memory subToken = subscriptionTokens[_underlyingToken]; 
+        
         // Mint pTokens
         subToken.pToken.mint(address(this), subToken.price);
         // Approve transfer of pTokens by superToken contract
@@ -99,14 +107,27 @@ contract PlanController is Ownable {
         // Upgrade pTokens to super pTokens
         subToken.superToken.upgrade(subToken.price);
         subToken.superToken.transfer(userPool, subToken.price);
+        _startStream();
         
     }
     
-    function withdrawInterest() public {
+    function fundSubscription(uint256 _nftId) public onlyNftOwner(_nftId) {
         
     }
     
-    function createSuperTokenContract() internal returns(address) {
+    function withdrawInterest(uint256 _nftId) public onlyNftOwner(_nftId) {
         
     }
+    
+    function _initNewSubscriber(address _underlyingToken) internal returns(uint256) {
+        // Mint NFT
+        uint256 nftId = subNFT.mint(msg.sender);
+        // Generate new UserStreamWallet contract
+        UserStreamWallet newUserStreamWallet = new UserStreamWallet(constantFlowAgreement);
+        // Save subscriber parameters
+        subUsers[nftId] = subUser(_underlyingToken, 0, newUserStreamWallet);
+        return(nftId);
+    }
+    
+    function _startStream() internal {}
 }
