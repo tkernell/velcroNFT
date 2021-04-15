@@ -25,7 +25,7 @@ contract UserStreamWallet is Ownable {
         flowAgreement = _flowAgreement;
     }
     
-    function startStream(ISuperfluidToken _token, address _receiver, int96 _flowRate, bytes calldata _ctx) public onlyOwner {
+    function createStream(ISuperfluidToken _token, address _receiver, int96 _flowRate, bytes calldata _ctx) public onlyOwner {
         flowAgreement.createFlow(_token, _receiver, _flowRate, _ctx);
     }
 }

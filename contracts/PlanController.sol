@@ -30,9 +30,28 @@ contract ISuperTokenFactory {
         string calldata symbol
     ) public returns (ISuperToken superToken) {}
 }
+
 abstract contract ISuperToken {
     function transfer(address recipient, uint256 amount) virtual external returns (bool);
+    /**
+     * @dev Upgrade ERC20 to SuperToken.
+     * @param amount Number of tokens to be upgraded (in 18 decimals)
+     *
+     * NOTE: It will use ´transferFrom´ to get tokens. Before calling this
+     * function you should ´approve´ this contract
+     */
     function upgrade(uint256 amount) virtual external;
+
+    /**
+     * @dev Upgrade ERC20 to SuperToken and transfer immediately
+     * @param to The account to received upgraded tokens
+     * @param amount Number of tokens to be upgraded (in 18 decimals)
+     * @param data User data for the TokensRecipient callback
+     *
+     * NOTE: It will use ´transferFrom´ to get tokens. Before calling this
+     * function you should ´approve´ this contract
+     */
+    function upgradeTo(address to, uint256 amount, bytes calldata data) virtual external;
 }
 
 contract PlanController is Ownable {
@@ -92,30 +111,36 @@ contract PlanController is Ownable {
     // Mint NFT, mint pToken, upgrade pToken to pTokenX, stream pTokenX from userPool to providerPool, transfer underlyingToken from user,
     // convert underlyingToken to aToken and transfer to userPool, record parameters. Probably break this up into multiple transactions?
     // Also, add nonreentrancy protections?
-    function createSubscription(address _underlyingToken) public {
+    function createSubscription(address _underlyingToken) public returns(uint256) {
         require(subscriptionTokens[_underlyingToken].active);
         
         // Mint subscription NFT
         uint256 nftId = _initNewSubscriber(_underlyingToken);
-
-        subscriptionToken memory subToken = subscriptionTokens[_underlyingToken]; 
-        
-        // Mint pTokens
-        subToken.pToken.mint(address(this), subToken.price);
-        // Approve transfer of pTokens by superToken contract
-        subToken.pToken.approve(address(subToken.superToken), subToken.price);
-        // Upgrade pTokens to super pTokens
-        subToken.superToken.upgrade(subToken.price);
-        subToken.superToken.transfer(userPool, subToken.price);
-        _startStream();
-        
+        return(nftId);
     }
     
-    function fundSubscription(uint256 _nftId) public onlyNftOwner(_nftId) {
+    function fundSubscription(uint256 nftId) public onlyNftOwner(nftId) {
+        subUser memory newSubUser = subUsers[nftId];
+        address underlyingToken = newSubUser.underlyingToken;
+        subscriptionToken memory subToken = subscriptionTokens[underlyingToken]; 
+        require(subToken.active);
         
+        
+        _initPTokens(subToken, nftId);
+        
+        // startStream(ISuperfluidToken _token, address _receiver, int96 _flowRate, bytes calldata _ctx)
+        newSubUser.userStreamWallet.createStream(
+            ISuperfluidToken(address(subToken.superToken)), 
+            providerPool, 
+            getFlowRate(underlyingToken), 
+            ""
+        );
+        
+        
+        // Transfer 
     }
     
-    function withdrawInterest(uint256 _nftId) public onlyNftOwner(_nftId) {
+    function withdrawInterest(uint256 nftId) public onlyNftOwner(nftId) {
         
     }
     
@@ -129,5 +154,18 @@ contract PlanController is Ownable {
         return(nftId);
     }
     
-    function _startStream() internal {}
+    function _initPTokens(subscriptionToken memory subToken, uint256 nftId) internal {
+        // Mint pTokens
+        subToken.pToken.mint(address(this), subToken.price);
+        // Approve transfer of pTokens by superToken contract
+        subToken.pToken.approve(address(subToken.superToken), subToken.price);
+        // Upgrade pTokens to super pTokens
+        subToken.superToken.upgrade(subToken.price);
+        subToken.superToken.transfer(address(subUsers[nftId].userStreamWallet), subToken.price);
+    }
+    
+
+    function getFlowRate(address underlyingToken) public view returns(int96){
+        return(int96(uint96(subscriptionTokens[underlyingToken].price/period)));
+    }
 }
