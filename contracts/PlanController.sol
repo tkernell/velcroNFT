@@ -73,6 +73,7 @@ contract PlanController is Ownable {
         address underlyingToken;
         uint256 startTimestamp;
         UserStreamWallet userStreamWallet;
+        uint256 scaledBalance;
     }
     
     mapping(address => subscriptionToken) public subscriptionTokens;
@@ -125,10 +126,9 @@ contract PlanController is Ownable {
         subscriptionToken memory subToken = subscriptionTokens[underlyingToken]; 
         require(subToken.active);
         
-        
         _initPTokens(subToken, nftId);
         
-        // startStream(ISuperfluidToken _token, address _receiver, int96 _flowRate, bytes calldata _ctx)
+        // start Superfluid Stream
         newSubUser.userStreamWallet.createStream(
             ISuperfluidToken(address(subToken.superToken)), 
             providerPool, 
@@ -136,8 +136,11 @@ contract PlanController is Ownable {
             ""
         );
         
+        // Transfer underlying token from user to userPool
+        IERC20(underlyingToken).transferFrom(msg.sender, address(userPool), subToken.price);
+        // Convert underlying token to aToken through userPool
+        UserPool(userPool).depositUnderlying(underlyingToken, subToken.price);
         
-        // Transfer 
     }
     
     function withdrawInterest(uint256 nftId) public onlyNftOwner(nftId) {
@@ -150,7 +153,7 @@ contract PlanController is Ownable {
         // Generate new UserStreamWallet contract
         UserStreamWallet newUserStreamWallet = new UserStreamWallet(constantFlowAgreement);
         // Save subscriber parameters
-        subUsers[nftId] = subUser(_underlyingToken, 0, newUserStreamWallet);
+        subUsers[nftId] = subUser(_underlyingToken, 0, newUserStreamWallet, 0);
         return(nftId);
     }
     
@@ -164,7 +167,11 @@ contract PlanController is Ownable {
         subToken.superToken.transfer(address(subUsers[nftId].userStreamWallet), subToken.price);
     }
     
+    function getScaledBalance() public view returns(uint256) {
+        
+    }
 
+    // Function needs improvements for precision
     function getFlowRate(address underlyingToken) public view returns(int96){
         return(int96(uint96(subscriptionTokens[underlyingToken].price/period)));
     }
