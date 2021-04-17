@@ -8,6 +8,7 @@ import "./UserPool.sol";
 import "./ProviderPool.sol";
 import "./PToken.sol";
 import "./UserStreamWallet.sol";
+import "./Aave/WadRayMath.sol";
 
 contract ISuperTokenFactory {
     /**
@@ -54,13 +55,24 @@ abstract contract ISuperToken {
     function upgradeTo(address to, uint256 amount, bytes calldata data) virtual external;
 }
 
+interface ILendingPool {
+    /**
+   * @dev Returns the normalized income normalized income of the reserve
+   * @param asset The address of the underlying asset of the reserve
+   * @return The reserve's normalized income
+   */
+  function getReserveNormalizedIncome(address asset) external view returns (uint256);
+}
+
 contract PlanController is Ownable {
+    using WadRayMath for uint256;
     SubscriptionNFT public subNFT;
     address public userPool;
     address public providerPool;
     uint256 public period;
     ISuperTokenFactory superTokenFactory = ISuperTokenFactory(0x2C90719f25B10Fc5646c82DA3240C76Fa5BcCF34); // Check this address
     IConstantFlowAgreementV1 constantFlowAgreement = IConstantFlowAgreementV1(address(0));
+    ILendingPool lendingPool = ILendingPool(address(0));
     
     struct subscriptionToken {
         PToken pToken;     // Placeholder token
@@ -140,7 +152,10 @@ contract PlanController is Ownable {
         IERC20(underlyingToken).transferFrom(msg.sender, address(userPool), subToken.price);
         // Convert underlying token to aToken through userPool
         UserPool(userPool).depositUnderlying(underlyingToken, subToken.price);
-        
+        // Record scaled balance
+        subUsers[nftId].scaledBalance = getScaledBalance(underlyingToken, subToken.price);
+        // Record subscription start timestamp
+        subUsers[nftId].startTimestamp = block.timestamp;
     }
     
     function withdrawInterest(uint256 nftId) public onlyNftOwner(nftId) {
@@ -167,8 +182,8 @@ contract PlanController is Ownable {
         subToken.superToken.transfer(address(subUsers[nftId].userStreamWallet), subToken.price);
     }
     
-    function getScaledBalance() public view returns(uint256) {
-        
+    function getScaledBalance(address underlyingToken, uint256 amount) public view returns(uint256) {
+        return(amount.rayDiv(lendingPool.getReserveNormalizedIncome(underlyingToken)));
     }
 
     // Function needs improvements for precision
