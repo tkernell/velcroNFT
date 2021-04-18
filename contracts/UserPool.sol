@@ -13,11 +13,11 @@ contract UserPool is Ownable {
     
     IAaveBridge public bridge = IAaveBridge(address(0));
     
-    function depositUnderlying(address assetToken, uint256 assetAmount) public onlyOwner {
+    function depositUnderlying(address assetToken, uint256 assetAmount) external onlyOwner {
         bridge.deposit(assetToken, assetAmount);
     }
     
-    function withdrawUnderlying(address receiver, address assetToken, uint256 assetAmount) public onlyOwner {
+    function withdrawUnderlying(address receiver, address assetToken, uint256 assetAmount) external onlyOwner {
         bridge.withdraw(receiver, assetToken, assetAmount);
     }
 }

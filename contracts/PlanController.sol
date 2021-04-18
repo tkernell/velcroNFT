@@ -5,7 +5,7 @@ pragma solidity 0.8.0;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./SubscriptionNFT.sol";
 import "./UserPool.sol";
-import "./ProviderPool.sol";
+import { ProviderPool } from "./ProviderPool.sol";
 import "./PToken.sol";
 import "./UserStreamWallet.sol";
 import "./Aave/WadRayMath.sol";
@@ -33,6 +33,10 @@ contract ISuperTokenFactory {
 }
 
 abstract contract ISuperToken {
+    /**
+     * @dev Returns the amount of tokens owned by an account (`owner`).
+     */
+    function balanceOf(address account) virtual external view returns(uint256 balance);
     function transfer(address recipient, uint256 amount) virtual external returns (bool);
     /**
      * @dev Upgrade ERC20 to SuperToken.
@@ -171,11 +175,14 @@ contract PlanController is Ownable {
     
     function providerWithdrawal(address _underlyingToken) public onlyOwner {
         // Amount = super pToken balance of providerPool
+        uint256 amount = subscriptionTokens[_underlyingToken].superToken.balanceOf(providerPool);
         // Convert 'amount' of aTokens from userPool back to underlyingToken
         // Send 'amount' to provider (owner)
+        UserPool(userPool).withdrawUnderlying(owner(), _underlyingToken, amount);
         // Push liquidityIndex from Aave lendingPool.getReserveNormalizedIncome to subscriptionTokens[_underlyingToken].liquidityIndices
+        subscriptionTokens[_underlyingToken].liquidityIndices.push(lendingPool.getReserveNormalizedIncome(_underlyingToken));
         // Burn Super pTokens from providerPool
-        
+        ProviderPool(providerPool).burnSuperToken(address(subscriptionTokens[_underlyingToken].superToken), amount);
     }
     
     function withdrawInterest(uint256 nftId) public onlyNftOwner(nftId) {
