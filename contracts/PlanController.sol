@@ -78,12 +78,14 @@ contract PlanController is Ownable {
         PToken pToken;     // Placeholder token
         ISuperToken superToken;
         uint256 price;      // Price per period
+        uint256[] liquidityIndices;
         bool active;
     }
     
     struct subUser {
         address underlyingToken;
         uint256 startTimestamp;
+        uint256 startLiquidityIndexArraySize;
         UserStreamWallet userStreamWallet;
         uint256 scaledBalance;
     }
@@ -118,7 +120,12 @@ contract PlanController is Ownable {
             "Super pToken",
             "pTKNx"
         );
-        subscriptionTokens[_underlyingToken] = subscriptionToken(newPToken, newSuperPToken, _price, true);
+        subscriptionTokens[_underlyingToken] = subscriptionToken(
+            newPToken, 
+            newSuperPToken, 
+            _price, 
+            new uint[](0), 
+            true);
     }
     
     // Mint NFT, mint pToken, upgrade pToken to pTokenX, stream pTokenX from userPool to providerPool, transfer underlyingToken from user,
@@ -138,6 +145,7 @@ contract PlanController is Ownable {
         subscriptionToken memory subToken = subscriptionTokens[underlyingToken]; 
         require(subToken.active);
         
+        // Mint, approve, upgrade, transfer pToken
         _initPTokens(subToken, nftId);
         
         // start Superfluid Stream
@@ -156,6 +164,18 @@ contract PlanController is Ownable {
         subUsers[nftId].scaledBalance = getScaledBalance(underlyingToken, subToken.price);
         // Record subscription start timestamp
         subUsers[nftId].startTimestamp = block.timestamp;
+        // Record liquidityIndices array size
+        subUsers[nftId].startLiquidityIndexArraySize = subToken.liquidityIndices.length;
+        
+    }
+    
+    function providerWithdrawal(address _underlyingToken) public onlyOwner {
+        // Amount = super pToken balance of providerPool
+        // Convert 'amount' of aTokens from userPool back to underlyingToken
+        // Send 'amount' to provider (owner)
+        // Push liquidityIndex from Aave lendingPool.getReserveNormalizedIncome to subscriptionTokens[_underlyingToken].liquidityIndices
+        // Burn Super pTokens from providerPool
+        
     }
     
     function withdrawInterest(uint256 nftId) public onlyNftOwner(nftId) {
@@ -168,7 +188,7 @@ contract PlanController is Ownable {
         // Generate new UserStreamWallet contract
         UserStreamWallet newUserStreamWallet = new UserStreamWallet(constantFlowAgreement);
         // Save subscriber parameters
-        subUsers[nftId] = subUser(_underlyingToken, 0, newUserStreamWallet, 0);
+        subUsers[nftId] = subUser(_underlyingToken, 0, 0, newUserStreamWallet, 0);
         return(nftId);
     }
     
@@ -179,6 +199,7 @@ contract PlanController is Ownable {
         subToken.pToken.approve(address(subToken.superToken), subToken.price);
         // Upgrade pTokens to super pTokens
         subToken.superToken.upgrade(subToken.price);
+        // Transfer super pTokens to userStreamWallet
         subToken.superToken.transfer(address(subUsers[nftId].userStreamWallet), subToken.price);
     }
     
