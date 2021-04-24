@@ -200,7 +200,7 @@ contract PlanController is Ownable {
         uint256 adjustedScaledBalance = thisSubUser.scaledBalance;
         uint256 i = thisSubUser.startLiquidityIndexArraySize;
         uint256 time0 = thisSubUser.startTimestamp;
-        while (i < subToken.liquidityIndices.length && subToken.liquidityIndices[i] <= thisSubUser.endTimestamp) {
+        while (i < subToken.liquidityIndices.length && subToken.providerWithdrawalTimestamps[i] <= thisSubUser.endTimestamp) {
             uint256 time1 = subToken.providerWithdrawalTimestamps[i];
             adjustedScaledBalance = adjustedScaledBalance - (time1 - time0) * uint256(int256(getFlowRate(thisSubUser.underlyingToken))) / subToken.liquidityIndices[i];
             time0 = time1;
