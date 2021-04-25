@@ -9,6 +9,7 @@ import { ProviderPool } from "./ProviderPool.sol";
 import "./PToken.sol";
 import "./UserStreamWallet.sol";
 import "./Aave/WadRayMath.sol";
+import "./Aave/ILendingPoolAddressesProviderV2.sol";
 
 contract ISuperTokenFactory {
     /**
@@ -74,9 +75,19 @@ contract PlanController is Ownable {
     address public userPool;
     address public providerPool;
     uint256 public period;
-    ISuperTokenFactory superTokenFactory = ISuperTokenFactory(0x2C90719f25B10Fc5646c82DA3240C76Fa5BcCF34); // Check this address
-    IConstantFlowAgreementV1 constantFlowAgreement = IConstantFlowAgreementV1(address(0));
-    ILendingPool lendingPool = ILendingPool(address(0));
+    // SuperTokenFactory on Matic: 0x2C90719f25B10Fc5646c82DA3240C76Fa5BcCF34
+    // SuperTokenFactory on Kovan: 0xF5F666AC8F581bAef8dC36C7C8828303Bd4F8561
+    ISuperTokenFactory superTokenFactory = ISuperTokenFactory(0xF5F666AC8F581bAef8dC36C7C8828303Bd4F8561);
+    // ConstantFlowAgreementV1 on Matic: 0x6EeE6060f715257b970700bc2656De21dEdF074C
+    // ConstantFlowAgreementV1 on Kovan: 0xECa8056809e7e8db04A8fF6e4E82cD889a46FE2F
+    IConstantFlowAgreementV1 constantFlowAgreement = IConstantFlowAgreementV1(0xECa8056809e7e8db04A8fF6e4E82cD889a46FE2F);
+    // Aave LendingPool on Matic: 0x8dFf5E27EA6b7AC08EbFdf9eB090F32ee9a30fcf
+    // Aave LendingPool on Kovan: 0xE0fBa4Fc209b4948668006B2bE61711b7f465bAe
+    ILendingPool lendingPool = ILendingPool(0xE0fBa4Fc209b4948668006B2bE61711b7f465bAe);
+    // Aave LendingPoolAddressesProviderV2 on Matic: 0xd05e3E715d945B59290df0ae8eF85c1BdB684744
+    // Aave LendingPoolAddressesProviderV2 on Kovan: 0x88757f2f99175387aB4C6a4b3067c77A695b0349
+    ILendingPoolAddressesProviderV2 lendingPoolAddressesProvider = ILendingPoolAddressesProviderV2(0x88757f2f99175387aB4C6a4b3067c77A695b0349);
+    
     
     struct subscriptionToken {
         PToken pToken;     // Placeholder token
@@ -185,7 +196,7 @@ contract PlanController is Ownable {
         // Send 'amount' to provider (owner)
         UserPool(userPool).withdrawUnderlying(owner(), _underlyingToken, amount);
         // Push liquidityIndex from Aave lendingPool.getReserveNormalizedIncome to subscriptionTokens[_underlyingToken].liquidityIndices
-        subscriptionTokens[_underlyingToken].liquidityIndices.push(lendingPool.getReserveNormalizedIncome(_underlyingToken));
+        subscriptionTokens[_underlyingToken].liquidityIndices.push(ILendingPool(lendingPoolAddressesProvider.getLendingPool()).getReserveNormalizedIncome(_underlyingToken));
         // Push block timestamp to subscriptionTokens[_underlyingToken].providerWithdrawalTimestamps
         subscriptionTokens[_underlyingToken].providerWithdrawalTimestamps.push(block.timestamp);
         // Burn Super pTokens from providerPool
@@ -208,7 +219,7 @@ contract PlanController is Ownable {
         }
         
         uint256 interest;
-        uint256 currentLiquidityIndex = lendingPool.getReserveNormalizedIncome(thisSubUser.underlyingToken);
+        uint256 currentLiquidityIndex = ILendingPool(lendingPoolAddressesProvider.getLendingPool()).getReserveNormalizedIncome(thisSubUser.underlyingToken);
         // If the subscription period has not ended...
         if (block.timestamp < thisSubUser.endTimestamp) {
             interest = adjustedScaledBalance * currentLiquidityIndex - subToken.superToken.balanceOf(address(thisSubUser.userStreamWallet));
@@ -249,12 +260,8 @@ contract PlanController is Ownable {
         subToken.superToken.transfer(address(subUsers[nftId].userStreamWallet), subToken.price);
     }
     
-    function _convertAndTransferATokens(address _receiver, address _underlyingToken, uint256 _amount) internal {
-        UserPool(userPool).withdrawUnderlying(_receiver, _underlyingToken, _amount);
-    }
-    
     function getScaledBalance(address underlyingToken, uint256 amount) public view returns(uint256) {
-        return(amount.rayDiv(lendingPool.getReserveNormalizedIncome(underlyingToken)));
+        return(amount.rayDiv(ILendingPool(lendingPoolAddressesProvider.getLendingPool()).getReserveNormalizedIncome(underlyingToken)));
     }
 
     // Function needs improvements for precision
