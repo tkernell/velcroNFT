@@ -121,7 +121,7 @@ contract PlanController is Ownable {
     }
     
     constructor(uint256 _periodDays) {
-        period = _periodDays * 1;
+        period = _periodDays * 1 days;
         subNFT = new SubscriptionNFT();
         userPool = address(new UserPool());
         providerPool = address(new ProviderPool());

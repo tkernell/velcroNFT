@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 interface IAaveBridge {
-    function deposit(address assetToken, uint256 assetAmount) external returns (uint256);
+    function deposit(address assetToken, uint256 assetAmount, uint256 referralCode) external returns (uint256);
     function withdraw(address receiver, address assetToken, uint256 assetAmount) external;
 }
 
@@ -16,7 +16,7 @@ contract UserPool is Ownable {
     
     function depositUnderlying(address assetToken, uint256 assetAmount) external onlyOwner {
         IERC20(assetToken).transfer(address(bridge), assetAmount);
-        bridge.deposit(assetToken, assetAmount);
+        bridge.deposit(assetToken, assetAmount, 0);
     }
     
     function withdrawUnderlying(address receiver, address assetToken, uint256 assetAmount) external onlyOwner {
