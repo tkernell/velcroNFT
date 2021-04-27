@@ -205,7 +205,7 @@ contract PlanController is Ownable {
         // Burn Super pTokens from providerPool
         ProviderPool(providerPool).burnSuperToken(address(subscriptionTokens[_underlyingToken].superToken), amount);
     }
-    
+
     function withdrawInterest(uint256 nftId) public onlyNftOwner(nftId) {
         subUser memory thisSubUser = subUsers[nftId];
         subscriptionToken memory subToken = subscriptionTokens[thisSubUser.underlyingToken];
@@ -216,7 +216,7 @@ contract PlanController is Ownable {
         uint256 time0 = thisSubUser.startTimestamp;
         while (i < subToken.liquidityIndices.length && subToken.providerWithdrawalTimestamps[i] <= thisSubUser.endTimestamp) {
             uint256 time1 = subToken.providerWithdrawalTimestamps[i];
-            adjustedScaledBalance = adjustedScaledBalance - (time1 - time0) * uint256(int256(getFlowRate(thisSubUser.underlyingToken))) / subToken.liquidityIndices[i];
+            adjustedScaledBalance = adjustedScaledBalance - (time1 - time0).rayMul(uint256(int256(getFlowRate(thisSubUser.underlyingToken)))).rayDiv(subToken.liquidityIndices[i]);
             time0 = time1;
             i += 1;
         }
@@ -225,21 +225,25 @@ contract PlanController is Ownable {
         uint256 currentLiquidityIndex = ILendingPool(lendingPoolAddressesProvider.getLendingPool()).getReserveNormalizedIncome(thisSubUser.underlyingToken);
         // If the subscription period has not ended...
         if (block.timestamp < thisSubUser.endTimestamp) {
-            interest = adjustedScaledBalance * currentLiquidityIndex - subToken.superToken.balanceOf(address(thisSubUser.userStreamWallet));
-            adjustedScaledBalance = adjustedScaledBalance - interest / currentLiquidityIndex;
+            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - subToken.superToken.balanceOf(address(thisSubUser.userStreamWallet));
+            adjustedScaledBalance = adjustedScaledBalance - interest.rayDiv(currentLiquidityIndex);
         // Else if the subscription period has ended and no principal remains...
         } else if (subToken.providerWithdrawalTimestamps.length > 0 && subToken.providerWithdrawalTimestamps[subToken.providerWithdrawalTimestamps.length - 1] > thisSubUser.endTimestamp) {
-            interest = currentLiquidityIndex * (adjustedScaledBalance - (thisSubUser.endTimestamp - time0) * uint256(int256(getFlowRate(thisSubUser.underlyingToken))) / subToken.liquidityIndices[i]);
+            interest = currentLiquidityIndex.rayMul(adjustedScaledBalance - (thisSubUser.endTimestamp - time0).rayMul(uint256(int256(getFlowRate(thisSubUser.underlyingToken)))).rayDiv(subToken.liquidityIndices[i]));
             adjustedScaledBalance = 0;
         } else {
-            interest = adjustedScaledBalance * currentLiquidityIndex - (thisSubUser.endTimestamp - time0) * uint256(int256(getFlowRate(thisSubUser.underlyingToken)));
-            adjustedScaledBalance = adjustedScaledBalance - interest / currentLiquidityIndex;
+            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - (thisSubUser.endTimestamp - time0).rayMul(uint256(int256(getFlowRate(thisSubUser.underlyingToken))));
+            adjustedScaledBalance = adjustedScaledBalance - interest.rayDiv(currentLiquidityIndex);
         }
         
         subUsers[nftId].scaledBalance = adjustedScaledBalance;
         subUsers[nftId].startTimestamp = block.timestamp;
         subUsers[nftId].startLiquidityIndexArraySize = subToken.liquidityIndices.length;
         UserPool(userPool).withdrawUnderlying(subNFT.ownerOf(nftId), thisSubUser.underlyingToken, interest);
+    }
+    
+    function viewIndicesAndTimestamps(address _underlyingToken, uint256 _index) public view returns(uint256 liquidityIndex, uint256 timestamp) {
+        return(subscriptionTokens[_underlyingToken].liquidityIndices[_index], subscriptionTokens[_underlyingToken].providerWithdrawalTimestamps[_index]);
     }
     
     function _initNewSubscriber(address _underlyingToken) internal returns(uint256) {
@@ -269,6 +273,6 @@ contract PlanController is Ownable {
 
     // Function needs improvements for precision
     function getFlowRate(address underlyingToken) public view returns(int96){
-        return(int96(uint96(subscriptionTokens[underlyingToken].price/period)));
+        return(int96(uint96(subscriptionTokens[underlyingToken].price / period)));
     }
 }
