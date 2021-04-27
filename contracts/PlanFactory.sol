@@ -8,12 +8,8 @@ import { AaveBridgeV2 } from "./Aave/AaveBridgeV2.sol";
 contract PlanFactory {
     PlanController[] public plans;
     
-    
-    
-    
-    
-    function createPlan() public {
-        PlanController newPlan = new PlanController(10);
+    function createPlan(uint256 _periodDays) public {
+        PlanController newPlan = new PlanController(_periodDays);
         newPlan.transferOwnership(msg.sender);
         plans.push(newPlan);
     }

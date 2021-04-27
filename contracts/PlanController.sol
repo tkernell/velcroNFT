@@ -87,6 +87,10 @@ contract PlanController is Ownable {
     // Aave LendingPoolAddressesProviderV2 on Matic: 0xd05e3E715d945B59290df0ae8eF85c1BdB684744
     // Aave LendingPoolAddressesProviderV2 on Kovan: 0x88757f2f99175387aB4C6a4b3067c77A695b0349
     ILendingPoolAddressesProviderV2 lendingPoolAddressesProvider = ILendingPoolAddressesProviderV2(0x88757f2f99175387aB4C6a4b3067c77A695b0349);
+    // Superfluid host on Matic:
+    // Superfluid host on Kovan: 0xF0d7d1D47109bA426B9D8A3Cde1941327af1eea3
+    ISuperfluid superfluidHost = ISuperfluid(0xF0d7d1D47109bA426B9D8A3Cde1941327af1eea3);
+    
     
     
     struct subscriptionToken {
@@ -116,8 +120,8 @@ contract PlanController is Ownable {
         _;
     }
     
-    constructor(uint256 _period) {
-        period = _period;
+    constructor(uint256 _periodDays) {
+        period = _periodDays * 1;
         subNFT = new SubscriptionNFT();
         userPool = address(new UserPool());
         providerPool = address(new ProviderPool());
@@ -161,7 +165,7 @@ contract PlanController is Ownable {
         subUser memory newSubUser = subUsers[nftId];
         address underlyingToken = newSubUser.underlyingToken;
         subscriptionToken memory subToken = subscriptionTokens[underlyingToken]; 
-        require(subToken.active);
+        require(subToken.active, "PlanController: token not approved");
         
         // Mint, approve, upgrade, transfer pToken
         _initPTokens(subToken, nftId);
@@ -170,8 +174,7 @@ contract PlanController is Ownable {
         newSubUser.userStreamWallet.createStream(
             ISuperfluidToken(address(subToken.superToken)), 
             providerPool, 
-            getFlowRate(underlyingToken), 
-            ""
+            getFlowRate(underlyingToken)
         );
         
         // Transfer underlying token from user to userPool
@@ -243,7 +246,7 @@ contract PlanController is Ownable {
         // Mint NFT
         uint256 nftId = subNFT.mint(msg.sender);
         // Generate new UserStreamWallet contract
-        UserStreamWallet newUserStreamWallet = new UserStreamWallet(constantFlowAgreement);
+        UserStreamWallet newUserStreamWallet = new UserStreamWallet(constantFlowAgreement, superfluidHost);
         // Save subscriber parameters
         subUsers[nftId] = subUser(_underlyingToken, 0, 0, 0, newUserStreamWallet, 0);
         return(nftId);
