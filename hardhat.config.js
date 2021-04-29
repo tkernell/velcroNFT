@@ -1,5 +1,7 @@
+require('dotenv').config();
 require("@nomiclabs/hardhat-waffle");
 
+const alchemyApiKey = process.env.ALCHEMY_API_KEY;
 /**
  * @type import('hardhat/config').HardhatUserConfig
  */
@@ -8,7 +10,7 @@ module.exports = {
   networks: {
     hardhat: {
       forking: {
-        url: "https://eth-kovan.alchemyapi.io/v2/{key}"
+        url: "https://eth-kovan.alchemyapi.io/v2/${alchemyApiKey}"
       }
     }
   }  
