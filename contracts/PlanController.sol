@@ -90,9 +90,9 @@ contract PlanController is Ownable {
     // Superfluid host on Matic:
     // Superfluid host on Kovan: 0xF0d7d1D47109bA426B9D8A3Cde1941327af1eea3
     ISuperfluid superfluidHost = ISuperfluid(0xF0d7d1D47109bA426B9D8A3Cde1941327af1eea3);
-    
-    
-    
+
+
+
     struct subscriptionToken {
         PToken pToken;     // Placeholder token
         ISuperToken superToken;
@@ -101,7 +101,7 @@ contract PlanController is Ownable {
         uint256[] providerWithdrawalTimestamps;
         bool active;
     }
-    
+
     struct subUser {
         address underlyingToken;
         uint256 startTimestamp;
@@ -110,16 +110,16 @@ contract PlanController is Ownable {
         UserStreamWallet userStreamWallet;
         uint256 scaledBalance;
     }
-    
+
     mapping(address => subscriptionToken) public subscriptionTokens;
     // Mapping from NFT Token ID to subUser
     mapping(uint256 => subUser) public subUsers;
-    
+
     modifier onlyNftOwner(uint256 _nftId) {
         require(msg.sender == subNFT.ownerOf(_nftId));
         _;
     }
-    
+
     constructor(uint256 _periodDays) {
         period = _periodDays * 1 days;
         subNFT = new SubscriptionNFT();
@@ -127,12 +127,12 @@ contract PlanController is Ownable {
         providerPool = address(new ProviderPool());
         // provider = msg.sender;
     }
-    
+
     // After checks, create new PToken contract and new SuperToken contract.
     function approveToken(address _underlyingToken, uint256 _price) public onlyOwner {
         require(_underlyingToken != address(0));
         require(!subscriptionTokens[_underlyingToken].active); // Require that this token has not already been approved
-        
+
         PToken newPToken = new PToken();
         ISuperToken newSuperPToken = superTokenFactory.createERC20Wrapper(
             IERC20(address(newPToken)),
@@ -142,41 +142,41 @@ contract PlanController is Ownable {
             "pTKNx"
         );
         subscriptionTokens[_underlyingToken] = subscriptionToken(
-            newPToken, 
-            newSuperPToken, 
-            _price, 
-            new uint[](0), 
+            newPToken,
+            newSuperPToken,
+            _price,
+            new uint[](0),
             new uint[](0),
             true);
     }
-    
+
     // Mint NFT, mint pToken, upgrade pToken to pTokenX, stream pTokenX from userPool to providerPool, transfer underlyingToken from user,
     // convert underlyingToken to aToken and transfer to userPool, record parameters. Probably break this up into multiple transactions?
     // Also, add nonreentrancy protections?
     function createSubscription(address _underlyingToken) public returns(uint256) {
         require(subscriptionTokens[_underlyingToken].active);
-        
+
         // Mint subscription NFT
         uint256 nftId = _initNewSubscriber(_underlyingToken);
         return(nftId);
     }
-    
+
     function fundSubscription(uint256 nftId) public onlyNftOwner(nftId) {
         subUser memory newSubUser = subUsers[nftId];
         address underlyingToken = newSubUser.underlyingToken;
-        subscriptionToken memory subToken = subscriptionTokens[underlyingToken]; 
+        subscriptionToken memory subToken = subscriptionTokens[underlyingToken];
         require(subToken.active, "PlanController: token not approved");
-        
+
         // Mint, approve, upgrade, transfer pToken
         _initPTokens(subToken, nftId);
-        
+
         // start Superfluid Stream
         newSubUser.userStreamWallet.createStream(
-            ISuperfluidToken(address(subToken.superToken)), 
-            providerPool, 
+            ISuperfluidToken(address(subToken.superToken)),
+            providerPool,
             getFlowRate(underlyingToken)
         );
-        
+
         // Transfer underlying token from user to userPool
         IERC20(underlyingToken).transferFrom(msg.sender, address(userPool), subToken.price);
         // Convert underlying token to aToken through userPool
@@ -189,9 +189,9 @@ contract PlanController is Ownable {
         subUsers[nftId].endTimestamp = block.timestamp + period;
         // Record liquidityIndices array size
         subUsers[nftId].startLiquidityIndexArraySize = subToken.liquidityIndices.length;
-        
+
     }
-    
+
     function providerWithdrawal(address _underlyingToken) public onlyOwner {
         // Amount = super pToken balance of providerPool
         uint256 amount = subscriptionTokens[_underlyingToken].superToken.balanceOf(providerPool);
@@ -210,7 +210,7 @@ contract PlanController is Ownable {
         subUser memory thisSubUser = subUsers[nftId];
         subscriptionToken memory subToken = subscriptionTokens[thisSubUser.underlyingToken];
         require(thisSubUser.scaledBalance > 0);
-        
+
         uint256 adjustedScaledBalance = thisSubUser.scaledBalance;
         uint256 i = thisSubUser.startLiquidityIndexArraySize;
         uint256 time0 = thisSubUser.startTimestamp;
@@ -220,7 +220,7 @@ contract PlanController is Ownable {
             time0 = time1;
             i += 1;
         }
-        
+
         uint256 interest;
         uint256 currentLiquidityIndex = ILendingPool(lendingPoolAddressesProvider.getLendingPool()).getReserveNormalizedIncome(thisSubUser.underlyingToken);
         // If the subscription period has not ended...
@@ -235,17 +235,21 @@ contract PlanController is Ownable {
             interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - (thisSubUser.endTimestamp - time0).rayMul(uint256(int256(getFlowRate(thisSubUser.underlyingToken))));
             adjustedScaledBalance = adjustedScaledBalance - interest.rayDiv(currentLiquidityIndex);
         }
-        
+
         subUsers[nftId].scaledBalance = adjustedScaledBalance;
         subUsers[nftId].startTimestamp = block.timestamp;
         subUsers[nftId].startLiquidityIndexArraySize = subToken.liquidityIndices.length;
         UserPool(userPool).withdrawUnderlying(subNFT.ownerOf(nftId), thisSubUser.underlyingToken, interest);
     }
-    
+
     function viewIndicesAndTimestamps(address _underlyingToken, uint256 _index) public view returns(uint256 liquidityIndex, uint256 timestamp) {
         return(subscriptionTokens[_underlyingToken].liquidityIndices[_index], subscriptionTokens[_underlyingToken].providerWithdrawalTimestamps[_index]);
     }
-    
+
+    function tokenIsActive(address _underlyingToken) public view returns(bool) {
+        return(subscriptionTokens[_underlyingToken].active);
+    }
+
     function _initNewSubscriber(address _underlyingToken) internal returns(uint256) {
         // Mint NFT
         uint256 nftId = subNFT.mint(msg.sender);
@@ -255,7 +259,7 @@ contract PlanController is Ownable {
         subUsers[nftId] = subUser(_underlyingToken, 0, 0, 0, newUserStreamWallet, 0);
         return(nftId);
     }
-    
+
     function _initPTokens(subscriptionToken memory subToken, uint256 nftId) internal {
         // Mint pTokens
         subToken.pToken.mint(address(this), subToken.price);
@@ -266,7 +270,7 @@ contract PlanController is Ownable {
         // Transfer super pTokens to userStreamWallet
         subToken.superToken.transfer(address(subUsers[nftId].userStreamWallet), subToken.price);
     }
-    
+
     function getScaledBalance(address underlyingToken, uint256 amount) public view returns(uint256) {
         return(amount.rayDiv(ILendingPool(lendingPoolAddressesProvider.getLendingPool()).getReserveNormalizedIncome(underlyingToken)));
     }
