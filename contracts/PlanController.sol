@@ -216,7 +216,7 @@ contract PlanController is Ownable {
         uint256 time0 = thisSubUser.startTimestamp;
         while (i < subToken.liquidityIndices.length && subToken.providerWithdrawalTimestamps[i] <= thisSubUser.endTimestamp) {
             uint256 time1 = subToken.providerWithdrawalTimestamps[i];
-            adjustedScaledBalance = adjustedScaledBalance - (time1 - time0).rayMul(uint256(int256(getFlowRate(thisSubUser.underlyingToken)))).rayDiv(subToken.liquidityIndices[i]);
+            adjustedScaledBalance = adjustedScaledBalance - (time1 - time0) * (uint256(int256(getFlowRate(thisSubUser.underlyingToken)))).rayDiv(subToken.liquidityIndices[i]);
             time0 = time1;
             i += 1;
         }
@@ -225,14 +225,16 @@ contract PlanController is Ownable {
         uint256 currentLiquidityIndex = ILendingPool(lendingPoolAddressesProvider.getLendingPool()).getReserveNormalizedIncome(thisSubUser.underlyingToken);
         // If the subscription period has not ended...
         if (block.timestamp < thisSubUser.endTimestamp) {
-            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - subToken.superToken.balanceOf(address(thisSubUser.userStreamWallet));
+            // interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - subToken.superToken.balanceOf(address(thisSubUser.userStreamWallet));
+            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - ((thisSubUser.endTimestamp - time0 + 1) * (uint256(int256(getFlowRate(thisSubUser.underlyingToken)))));
             adjustedScaledBalance = adjustedScaledBalance - interest.rayDiv(currentLiquidityIndex);
         // Else if the subscription period has ended and no principal remains...
         } else if (subToken.providerWithdrawalTimestamps.length > 0 && subToken.providerWithdrawalTimestamps[subToken.providerWithdrawalTimestamps.length - 1] > thisSubUser.endTimestamp) {
-            interest = currentLiquidityIndex.rayMul(adjustedScaledBalance - (thisSubUser.endTimestamp - time0).rayMul(uint256(int256(getFlowRate(thisSubUser.underlyingToken)))).rayDiv(subToken.liquidityIndices[i]));
+            interest = currentLiquidityIndex.rayMul(adjustedScaledBalance - (thisSubUser.endTimestamp - time0)*(uint256(int256(getFlowRate(thisSubUser.underlyingToken)))).rayDiv(subToken.liquidityIndices[i]));
             adjustedScaledBalance = 0;
+        // Need another elseif for when user withdraws after endTimestamp, still some principal left, and user withdraws again
         } else {
-            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - (thisSubUser.endTimestamp - time0).rayMul(uint256(int256(getFlowRate(thisSubUser.underlyingToken))));
+            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - (thisSubUser.endTimestamp - time0)*(uint256(int256(getFlowRate(thisSubUser.underlyingToken))));
             adjustedScaledBalance = adjustedScaledBalance - interest.rayDiv(currentLiquidityIndex);
         }
 
@@ -240,6 +242,16 @@ contract PlanController is Ownable {
         subUsers[nftId].startTimestamp = block.timestamp;
         subUsers[nftId].startLiquidityIndexArraySize = subToken.liquidityIndices.length;
         UserPool(userPool).withdrawUnderlying(subNFT.ownerOf(nftId), thisSubUser.underlyingToken, interest);
+    }
+
+    function isSubActive(uint256 nftId) public view onlyOwner returns(bool) {
+        return(block.timestamp < subUsers[nftId].endTimestamp);
+    }
+
+    function deleteStream(uint256 nftId) public onlyOwner {
+        subUser memory thisSubUser = subUsers[nftId];
+        subscriptionToken memory subToken = subscriptionTokens[thisSubUser.underlyingToken];
+        thisSubUser.userStreamWallet.deleteStream(ISuperfluidToken(address(subToken.superToken)), address(providerPool));
     }
 
     function viewIndicesAndTimestamps(address _underlyingToken, uint256 _index) public view returns(uint256 liquidityIndex, uint256 timestamp) {
