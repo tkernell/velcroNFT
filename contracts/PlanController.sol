@@ -11,6 +11,8 @@ import "./UserStreamWallet.sol";
 import "./Aave/WadRayMath.sol";
 import "./Aave/ILendingPoolAddressesProviderV2.sol";
 
+import "hardhat/console.sol";
+
 contract ISuperTokenFactory {
     /**
      * @dev Upgradability modes
@@ -99,6 +101,7 @@ contract PlanController is Ownable {
         uint256 price;      // Price per period
         uint256[] liquidityIndices;
         uint256[] providerWithdrawalTimestamps;
+        uint256 globalScaledBalance;
         bool active;
     }
 
@@ -147,6 +150,7 @@ contract PlanController is Ownable {
             _price,
             new uint[](0),
             new uint[](0),
+            0,
             true);
     }
 
@@ -189,7 +193,8 @@ contract PlanController is Ownable {
         subUsers[nftId].endTimestamp = block.timestamp + period;
         // Record liquidityIndices array size
         subUsers[nftId].startLiquidityIndexArraySize = subToken.liquidityIndices.length;
-
+        // Add user's scaled balance to global scaled balance
+        subscriptionTokens[underlyingToken].globalScaledBalance += subUsers[nftId].scaledBalance;
     }
 
     function providerWithdrawal(address _underlyingToken) public onlyOwner {
@@ -204,6 +209,8 @@ contract PlanController is Ownable {
         subscriptionTokens[_underlyingToken].providerWithdrawalTimestamps.push(block.timestamp);
         // Burn Super pTokens from providerPool
         ProviderPool(providerPool).burnSuperToken(address(subscriptionTokens[_underlyingToken].superToken), amount);
+        // Subtract withdrawal amount from global scaled balance
+        subscriptionTokens[_underlyingToken].globalScaledBalance -= getScaledBalance(_underlyingToken, amount);
     }
 
     function withdrawInterest(uint256 nftId) public onlyNftOwner(nftId) {
@@ -237,11 +244,18 @@ contract PlanController is Ownable {
             interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - (thisSubUser.endTimestamp - time0)*(uint256(int256(getFlowRate(thisSubUser.underlyingToken))));
             adjustedScaledBalance = adjustedScaledBalance - interest.rayDiv(currentLiquidityIndex);
         }
-
+        
+        // Get real interest to withdraw
+        uint256 pTokenSupply = IERC20(address(subToken.superToken)).totalSupply();
+        console.log("PToken Supply: %s", pTokenSupply);
+        uint256 aTokenBalance = IERC20(UserPool(userPool).getReserveInterestToken(thisSubUser.underlyingToken)).balanceOf(userPool);
+        uint256 realInterest = interest * (aTokenBalance - pTokenSupply) / (subToken.globalScaledBalance.rayMul(currentLiquidityIndex) - pTokenSupply);
+        console.log("Real Interest: %s", realInterest);
         subUsers[nftId].scaledBalance = adjustedScaledBalance;
         subUsers[nftId].startTimestamp = block.timestamp;
         subUsers[nftId].startLiquidityIndexArraySize = subToken.liquidityIndices.length;
-        UserPool(userPool).withdrawUnderlying(subNFT.ownerOf(nftId), thisSubUser.underlyingToken, interest);
+        subscriptionTokens[thisSubUser.underlyingToken].globalScaledBalance -= getScaledBalance(thisSubUser.underlyingToken, interest);
+        UserPool(userPool).withdrawUnderlying(subNFT.ownerOf(nftId), thisSubUser.underlyingToken, realInterest);
     }
 
     function isSubActive(uint256 nftId) public view onlyOwner returns(bool) {
@@ -291,4 +305,6 @@ contract PlanController is Ownable {
     function getFlowRate(address underlyingToken) public view returns(int96){
         return(int96(uint96(subscriptionTokens[underlyingToken].price / period)));
     }
+    
+    
 }

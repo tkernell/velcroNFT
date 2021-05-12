@@ -24,4 +24,8 @@ contract UserPool is Ownable {
         IERC20(bridge.getReserveInterestToken(assetToken)).transfer(address(bridge), assetAmount);
         bridge.withdraw(receiver, assetToken, assetAmount);
     }
+    
+    function getReserveInterestToken(address assetToken) external view returns(address) {
+        return(bridge.getReserveInterestToken(assetToken));
+    }
 }
