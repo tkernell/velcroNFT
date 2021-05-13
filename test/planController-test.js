@@ -4,7 +4,8 @@ const { time } = require("@openzeppelin/test-helpers");
 const precision = BigInt(1e18);
 const DAI_KOVAN_ADDRESS = "0xff795577d9ac8bd7d90ee22b6c1703490b6512fd";
 const AAVE_BRIDGE_ADDRESS = "0x4922EEBff2D2d82dd112B1D662Fd72B948a3C16E";
-const SUBSCRIPTION_PRICE = BigInt(1) * precision;
+const SUBSCRIPTION_PRICE = BigInt(2) * precision;
+const NDAYS = 2;
 
 
 describe("PlanController", function() {
@@ -23,7 +24,7 @@ describe("PlanController", function() {
     daiContract = await ERC20Contract.attach(DAI_KOVAN_ADDRESS);
 
     const PlanController = await ethers.getContractFactory("PlanController");
-    planController = await PlanController.deploy(2);
+    planController = await PlanController.deploy(NDAYS);
     [owner, addr1, addr2] = await ethers.getSigners();
     await planController.deployed();
 
@@ -117,8 +118,11 @@ describe("PlanController", function() {
   it("Test full process", async function() {
 
     await planController.connect(addr1).createSubscription(DAI_KOVAN_ADDRESS);
+    await planController.connect(addr2).createSubscription(DAI_KOVAN_ADDRESS);
     await daiContract.connect(addr1).approve(planController.address, SUBSCRIPTION_PRICE);
+    await daiContract.connect(addr2).approve(planController.address, SUBSCRIPTION_PRICE);
     await planController.connect(addr1).fundSubscription(0);
+    await planController.connect(addr2).fundSubscription(1);
     await daiContract.connect(addr1).transfer(addr2.address, await daiContract.balanceOf(addr1.address));
     let providerPoolAddress = await planController.providerPool();
     let subscriberStruct = await planController.subUsers(0);
@@ -128,6 +132,7 @@ describe("PlanController", function() {
       console.log("USW_DAIX: " + await pDaiXContract.balanceOf(subscriberStruct.userStreamWallet));
       console.log("OWNR_DAI: " + await daiContract.balanceOf(owner.address));
       console.log("ADR1_DAI: " + await daiContract.balanceOf(addr1.address));
+      console.log("ADR2_DAI: " + await daiContract.balanceOf(addr2.address));
       console.log("UPL_ADAI: " + await aDaiContract.balanceOf(await planController.userPool()));
       console.log("PDAIX_TS: " + await pDaiXContract.totalSupply());
     };
@@ -191,6 +196,8 @@ describe("PlanController", function() {
 
     await planController.deleteStream(0);
     console.log("**** STREAM DELETED ****");
+    await planController.deleteStream(1);
+    console.log("**** STREAM DELETED ****");
 
     await spitout();
 
@@ -207,6 +214,12 @@ describe("PlanController", function() {
     console.log("**** Interest Withdrawal ****");
 
     await spitout();
+
+    await planController.connect(addr2).withdrawInterest(1);
+    console.log("**** Interest Withdrawal 2 ****");
+
+    await spitout();
+
     console.log("Flow: " + await planController.getFlowRate(DAI_KOVAN_ADDRESS));
   });
 })

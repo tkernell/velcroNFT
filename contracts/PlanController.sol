@@ -200,6 +200,7 @@ contract PlanController is Ownable {
     function providerWithdrawal(address _underlyingToken) public onlyOwner {
         // Amount = super pToken balance of providerPool
         uint256 amount = subscriptionTokens[_underlyingToken].superToken.balanceOf(providerPool);
+        console.log("@PRW_AMT: %s", amount);
         // Convert 'amount' of aTokens from userPool back to underlyingToken
         // Send 'amount' to provider (owner)
         UserPool(userPool).withdrawUnderlying(owner(), _underlyingToken, amount);
@@ -254,6 +255,7 @@ contract PlanController is Ownable {
         console.log("@GLB_INT: %s", subToken.globalScaledBalance.rayMul(currentLiquidityIndex) - pTokenSupply);
         console.log("@USR_INT: %s", interest);
         console.log("@GLB_SBL: %s", subscriptionTokens[thisSubUser.underlyingToken].globalScaledBalance);
+        console.log("@USR_SBL: %s", adjustedScaledBalance);
         
         subUsers[nftId].scaledBalance = adjustedScaledBalance;
         subUsers[nftId].startTimestamp = time0;
