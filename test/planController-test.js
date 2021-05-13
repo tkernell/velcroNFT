@@ -8,6 +8,7 @@ const SUBSCRIPTION_PRICE = BigInt(2) * precision;
 const NDAYS = 2;
 
 
+
 describe("PlanController", function() {
 
   let planController;
@@ -17,7 +18,22 @@ describe("PlanController", function() {
   let nftContract;
   let pDaiXContract;
   let pDaiContract;
-  let owner, addr1, addr2;
+  let owner, addr1, addr2, addr3;
+
+  async function providerWithdrawal(token) {
+    console.log("**** Provider Withdrawal **** ");
+    await planController.providerWithdrawal(token);
+  };
+
+  async function withdrawInterest(user, nftId) {
+    console.log("**** Interest Withdrawal " + nftId + " ****");
+    await planController.connect(user).withdrawInterest(nftId);
+  };
+
+  async function deleteStream(user, nftId) {
+    console.log("**** Stream Deleted " + nftId + " ****");
+    await planController.connect(user).deleteStream(nftId);
+  };
 
   beforeEach(async function () {
     const ERC20Contract = await ethers.getContractFactory("ERC20");
@@ -45,6 +61,9 @@ describe("PlanController", function() {
     aDaiContract = await ERC20Contract.attach(aDaiAddress);
 
     await daiContract.transfer(addr2.address, await daiContract.balanceOf(owner.address));
+
+
+
   });
 
   // it("Should set deployer as owner", async function() {
@@ -115,15 +134,130 @@ describe("PlanController", function() {
   //   await planController.providerWithdrawal(DAI_KOVAN_ADDRESS);
   // });
 
+  // it("Test full process", async function() {
+  //
+  //   await planController.connect(addr1).createSubscription(DAI_KOVAN_ADDRESS);
+  //   await planController.connect(addr2).createSubscription(DAI_KOVAN_ADDRESS);
+  //   await daiContract.connect(addr1).approve(planController.address, await daiContract.balanceOf(addr1.address));
+  //   await daiContract.connect(addr2).approve(planController.address, await daiContract.balanceOf(addr2.address));
+  //   await planController.connect(addr1).fundSubscription(0);
+  //   await planController.connect(addr2).fundSubscription(1);
+  //   // await daiContract.connect(addr1).transfer(addr2.address, await daiContract.balanceOf(addr1.address));
+  //   // await daiContract.connect(addr1).transfer(await planController.userPool(), await daiContract.balanceOf(addr1.address));
+  //   await planController.connect(addr1).testDepositExtra(DAI_KOVAN_ADDRESS, await daiContract.balanceOf(addr1.address));
+  //   await planController.connect(addr2).testDepositExtra(DAI_KOVAN_ADDRESS, await daiContract.balanceOf(addr2.address));
+  //   let providerPoolAddress = await planController.providerPool();
+  //   let subscriberStruct = await planController.subUsers(0);
+  //
+  //   async function spitout() {
+  //     console.log("PPL_DAIX: " + await pDaiXContract.balanceOf(providerPoolAddress));
+  //     console.log("USW_DAIX: " + await pDaiXContract.balanceOf(subscriberStruct.userStreamWallet));
+  //     console.log("OWNR_DAI: " + await daiContract.balanceOf(owner.address));
+  //     console.log("ADR1_DAI: " + await daiContract.balanceOf(addr1.address));
+  //     console.log("ADR2_DAI: " + await daiContract.balanceOf(addr2.address));
+  //     console.log("UPL_ADAI: " + await aDaiContract.balanceOf(await planController.userPool()));
+  //     console.log("PDAIX_TS: " + await pDaiXContract.totalSupply());
+  //   };
+  //
+  //   await spitout();
+  //   await delay(50000);
+  //
+  //   await spitout();
+  //
+  //   await providerWithdrawal(DAI_KOVAN_ADDRESS);
+  //
+  //   await spitout();
+  //
+  //   // await withdrawInterest(addr1, 0);
+  //   await planController.connect(addr1).withdrawInterest(0);
+  //   console.log("**** Interest Withdrawal ****");
+  //
+  //   await spitout();
+  //
+  //   await delay(50000);
+  //   // await delay(169198);
+  //   await spitout();
+  //
+  //   await planController.providerWithdrawal(DAI_KOVAN_ADDRESS);
+  //   console.log("**** Provider Withdrawal **** ");
+  //
+  //   await spitout();
+  //
+  //   await planController.connect(addr1).withdrawInterest(0);
+  //   console.log("**** Interest Withdrawal ****");
+  //
+  //   await spitout();
+  //
+  //   await delay(50000);
+  //   // await delay(169198);
+  //   await spitout();
+  //
+  //   await planController.providerWithdrawal(DAI_KOVAN_ADDRESS);
+  //   console.log("**** Provider Withdrawal **** ");
+  //
+  //   await spitout();
+  //
+  //   await planController.connect(addr1).withdrawInterest(0);
+  //   console.log("**** Interest Withdrawal ****");
+  //
+  //   await spitout();
+  //
+  //   await delay(22000);
+  //   // await delay(169198);
+  //   await spitout();
+  //
+  //   await planController.providerWithdrawal(DAI_KOVAN_ADDRESS);
+  //   console.log("**** Provider Withdrawal **** ");
+  //
+  //   await spitout();
+  //
+  //   await planController.connect(addr1).withdrawInterest(0);
+  //   console.log("**** Interest Withdrawal ****");
+  //
+  //   await spitout();
+  //
+  //   await planController.deleteStream(0);
+  //   console.log("**** STREAM DELETED ****");
+  //   await planController.deleteStream(1);
+  //   console.log("**** STREAM DELETED ****");
+  //
+  //   await spitout();
+  //
+  //   await delay(22000);
+  //   // await delay(169198);
+  //   await spitout();
+  //
+  //   await planController.providerWithdrawal(DAI_KOVAN_ADDRESS);
+  //   console.log("**** Provider Withdrawal **** ");
+  //
+  //   await spitout();
+  //
+  //   await planController.connect(addr1).withdrawInterest(0);
+  //   console.log("**** Interest Withdrawal ****");
+  //
+  //   await spitout();
+  //
+  //   await planController.connect(addr2).withdrawInterest(1);
+  //   console.log("**** Interest Withdrawal 2 ****");
+  //
+  //   await spitout();
+  //
+  //   console.log("Flow: " + await planController.getFlowRate(DAI_KOVAN_ADDRESS));
+  // });
+
   it("Test full process", async function() {
+    this.timeout(50000);
 
     await planController.connect(addr1).createSubscription(DAI_KOVAN_ADDRESS);
     await planController.connect(addr2).createSubscription(DAI_KOVAN_ADDRESS);
-    await daiContract.connect(addr1).approve(planController.address, SUBSCRIPTION_PRICE);
-    await daiContract.connect(addr2).approve(planController.address, SUBSCRIPTION_PRICE);
+    await daiContract.connect(addr1).approve(planController.address, await daiContract.balanceOf(addr1.address));
+    await daiContract.connect(addr2).approve(planController.address, await daiContract.balanceOf(addr2.address));
     await planController.connect(addr1).fundSubscription(0);
     await planController.connect(addr2).fundSubscription(1);
-    await daiContract.connect(addr1).transfer(addr2.address, await daiContract.balanceOf(addr1.address));
+    // await daiContract.connect(addr1).transfer(addr2.address, await daiContract.balanceOf(addr1.address));
+    // await daiContract.connect(addr1).transfer(await planController.userPool(), await daiContract.balanceOf(addr1.address));
+    await planController.connect(addr1).testDepositExtra(DAI_KOVAN_ADDRESS, await daiContract.balanceOf(addr1.address));
+    await planController.connect(addr2).testDepositExtra(DAI_KOVAN_ADDRESS, await daiContract.balanceOf(addr2.address));
     let providerPoolAddress = await planController.providerPool();
     let subscriberStruct = await planController.subUsers(0);
 
@@ -139,18 +273,33 @@ describe("PlanController", function() {
 
     await spitout();
     await delay(50000);
-    // await delay(169198);
-    await spitout();
-
-    await planController.providerWithdrawal(DAI_KOVAN_ADDRESS);
-    console.log("**** Provider Withdrawal **** ");
 
     await spitout();
 
+    await providerWithdrawal(DAI_KOVAN_ADDRESS);
+
+    await spitout();
+
+
+    console.log("Experiment START");
+
+    // await withdrawInterest(addr1, 0);
     await planController.connect(addr1).withdrawInterest(0);
     console.log("**** Interest Withdrawal ****");
 
     await spitout();
+
+    await withdrawInterest(addr1, 0);
+
+    await spitout();
+
+    console.log("Experiment END");
+
+    // for (i = 0; i < 25; i++) {
+    //   await time.increase(2);
+    //   await planController.connect(addr1).withdrawInterest(0);
+    // }
+
 
     await delay(50000);
     // await delay(169198);

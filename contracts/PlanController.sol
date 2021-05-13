@@ -343,5 +343,10 @@ contract PlanController is Ownable {
         return(int96(uint96(subscriptionTokens[underlyingToken].price / period)));
     }
     
+    function testDepositExtra(address underlyingToken, uint256 amount) external {
+        IERC20(underlyingToken).transferFrom(msg.sender, address(userPool), amount);
+        UserPool(userPool).depositUnderlying(underlyingToken, amount);
+    }
+    
     
 }
