@@ -110,6 +110,7 @@ contract PlanController is Ownable {
         uint256 startLiquidityIndexArraySize;
         UserStreamWallet userStreamWallet;
         uint256 scaledBalance;
+        uint256 realAmount;
     }
 
     mapping(address => subscriptionToken) public subscriptionTokens;
@@ -168,23 +169,30 @@ contract PlanController is Ownable {
         address underlyingToken = newSubUser.underlyingToken;
         subscriptionToken memory subToken = subscriptionTokens[underlyingToken];
         require(subToken.active, "PlanController: token not approved");
+        
+        // TESTING FEE
+        uint256 feePct = 500; // 5%
+        uint256 feeAmount = subToken.price * feePct / 10000;
+        uint256 _realAmount = subToken.price - feeAmount;
+        
+        subUsers[nftId].realAmount = _realAmount;
 
         // Mint, approve, upgrade, transfer pToken
-        _initPTokens(subToken, nftId);
+        _initPTokens(subToken, nftId, _realAmount);
 
         // start Superfluid Stream
         newSubUser.userStreamWallet.createStream(
             ISuperfluidToken(address(subToken.superToken)),
             providerPool,
-            getFlowRate(underlyingToken)
+            getFlowRate(nftId)
         );
 
         // Transfer underlying token from user to userPool
         IERC20(underlyingToken).transferFrom(msg.sender, address(userPool), subToken.price);
         // Convert underlying token to aToken through userPool
-        UserPool(userPool).depositUnderlying(underlyingToken, subToken.price);
+        UserPool(userPool).depositUnderlying(underlyingToken, _realAmount);
         // Record scaled balance
-        subUsers[nftId].scaledBalance = getScaledBalance(underlyingToken, subToken.price);
+        subUsers[nftId].scaledBalance = getScaledBalance(underlyingToken, _realAmount);
         // Record subscription start timestamp
         subUsers[nftId].startTimestamp = block.timestamp;
         // Record subscription end timestamp
@@ -193,6 +201,8 @@ contract PlanController is Ownable {
         subUsers[nftId].startLiquidityIndexArraySize = subToken.liquidityIndices.length;
         // Add user's scaled balance to global scaled balance
         subscriptionTokens[underlyingToken].globalScaledBalance += subUsers[nftId].scaledBalance;
+        // Record real amount after fee
+        // subUsers[nftId].realAmount = _realAmount;
     }
 
     function providerWithdrawal(address _underlyingToken) public onlyOwner {
@@ -215,34 +225,45 @@ contract PlanController is Ownable {
     function withdrawInterest(uint256 nftId) public onlyNftOwner(nftId) {
         subUser memory thisSubUser = subUsers[nftId];
         subscriptionToken memory subToken = subscriptionTokens[thisSubUser.underlyingToken];
-        require(thisSubUser.scaledBalance > 0);
+        require(thisSubUser.scaledBalance > 0, "No interest to withdraw");
+        
+        console.log("Alpha");
 
         uint256 adjustedScaledBalance = thisSubUser.scaledBalance;
         uint256 i = thisSubUser.startLiquidityIndexArraySize;
         uint256 time0 = thisSubUser.startTimestamp;
         while (i < subToken.liquidityIndices.length && subToken.providerWithdrawalTimestamps[i] <= thisSubUser.endTimestamp) {
             uint256 time1 = subToken.providerWithdrawalTimestamps[i];
-            adjustedScaledBalance = adjustedScaledBalance - (time1 - time0) * (uint256(int256(getFlowRate(thisSubUser.underlyingToken)))).rayDiv(subToken.liquidityIndices[i]);
+            adjustedScaledBalance = adjustedScaledBalance - (time1 - time0) * (uint256(int256(getFlowRate(nftId)))).rayDiv(subToken.liquidityIndices[i]);
             time0 = time1;
             i += 1;
         }
+        
+        console.log("Beta");
 
         uint256 interest;
         uint256 currentLiquidityIndex = ILendingPool(lendingPoolAddressesProvider.getLendingPool()).getReserveNormalizedIncome(thisSubUser.underlyingToken);
         // If the subscription period has not ended...
         if (block.timestamp < thisSubUser.endTimestamp) {
             // interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - subToken.superToken.balanceOf(address(thisSubUser.userStreamWallet));
-            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - ((thisSubUser.endTimestamp - time0 + 1) * (uint256(int256(getFlowRate(thisSubUser.underlyingToken)))));
+            console.log("Sub not ended");
+            console.log(adjustedScaledBalance.rayMul(currentLiquidityIndex));
+            console.log((thisSubUser.endTimestamp - time0 + 1));
+            console.log((uint256(int256(getFlowRate(nftId)))));
+            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - ((thisSubUser.endTimestamp - time0) * (uint256(int256(getFlowRate(nftId)))));
+            console.log("Interest calculated: %s", interest);
             adjustedScaledBalance = adjustedScaledBalance - interest.rayDiv(currentLiquidityIndex);
         // Else if the subscription period has ended and no principal remains...
         } else if (subToken.providerWithdrawalTimestamps.length > 0 && subToken.providerWithdrawalTimestamps[subToken.providerWithdrawalTimestamps.length - 1] > thisSubUser.endTimestamp) {
-            interest = currentLiquidityIndex.rayMul(adjustedScaledBalance - (thisSubUser.endTimestamp - time0)*(uint256(int256(getFlowRate(thisSubUser.underlyingToken)))).rayDiv(subToken.liquidityIndices[i]));
+            interest = currentLiquidityIndex.rayMul(adjustedScaledBalance - (thisSubUser.endTimestamp - time0)*(uint256(int256(getFlowRate(nftId)))).rayDiv(subToken.liquidityIndices[i]));
             adjustedScaledBalance = 0;
         // Need another elseif for when user withdraws after endTimestamp, still some principal left, and user withdraws again
         } else {
-            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - (thisSubUser.endTimestamp - time0)*(uint256(int256(getFlowRate(thisSubUser.underlyingToken))));
+            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - (thisSubUser.endTimestamp - time0)*(uint256(int256(getFlowRate(nftId))));
             adjustedScaledBalance = adjustedScaledBalance - interest.rayDiv(currentLiquidityIndex);
         }
+        
+        console.log("Gamma");
         
         // Get real interest to withdraw
         uint256 pTokenSupply = IERC20(address(subToken.superToken)).totalSupply();
@@ -272,7 +293,7 @@ contract PlanController is Ownable {
         uint256 time0 = thisSubUser.startTimestamp;
         // Subtract each provider withdrawal amount before user's subscription end timestamp
         while (i < subToken.liquidityIndices.length && subToken.providerWithdrawalTimestamps[i] < thisSubUser.endTimestamp) {
-            adjustedScaledBalance -= ((subToken.providerWithdrawalTimestamps[i] - time0) * uint256(int256(getFlowRate(thisSubUser.underlyingToken)))).rayDiv(subToken.liquidityIndices[i]);
+            adjustedScaledBalance -= ((subToken.providerWithdrawalTimestamps[i] - time0) * uint256(int256(getFlowRate(nftId)))).rayDiv(subToken.liquidityIndices[i]);
             time0 = subToken.providerWithdrawalTimestamps[i];
             i++;
         }
@@ -280,13 +301,13 @@ contract PlanController is Ownable {
         uint256 currentLiquidityIndex = ILendingPool(lendingPoolAddressesProvider.getLendingPool()).getReserveNormalizedIncome(thisSubUser.underlyingToken);
         uint256 interest;
         if (block.timestamp < thisSubUser.endTimestamp) {
-            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - ((thisSubUser.endTimestamp - time0) * uint256(int256(getFlowRate(thisSubUser.underlyingToken))));
+            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - ((thisSubUser.endTimestamp - time0) * uint256(int256(getFlowRate(nftId))));
             adjustedScaledBalance = adjustedScaledBalance - getScaledBalance(thisSubUser.underlyingToken, interest);
         } else if (subToken.liquidityIndices.length >= i) {
-            interest = adjustedScaledBalance.rayMul(subToken.liquidityIndices[i]) - ((thisSubUser.endTimestamp - time0) * uint256(int256(getFlowRate(thisSubUser.underlyingToken))));
+            interest = adjustedScaledBalance.rayMul(subToken.liquidityIndices[i]) - ((thisSubUser.endTimestamp - time0) * uint256(int256(getFlowRate(nftId))));
             adjustedScaledBalance = 0;
         } else {
-            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - ((thisSubUser.endTimestamp - time0) * uint256(int256(getFlowRate(thisSubUser.underlyingToken))));
+            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - ((thisSubUser.endTimestamp - time0) * uint256(int256(getFlowRate(nftId))));
         }
         
         subUsers[nftId].startLiquidityIndexArraySize = i;
@@ -317,19 +338,19 @@ contract PlanController is Ownable {
         // Generate new UserStreamWallet contract
         UserStreamWallet newUserStreamWallet = new UserStreamWallet(constantFlowAgreement, superfluidHost);
         // Save subscriber parameters
-        subUsers[nftId] = subUser(_underlyingToken, 0, 0, 0, newUserStreamWallet, 0);
+        subUsers[nftId] = subUser(_underlyingToken, 0, 0, 0, newUserStreamWallet, 0, 0);
         return(nftId);
     }
 
-    function _initPTokens(subscriptionToken memory subToken, uint256 nftId) internal {
+    function _initPTokens(subscriptionToken memory subToken, uint256 nftId, uint256 realAmount) internal {
         // Mint pTokens
-        subToken.pToken.mint(address(this), subToken.price);
+        subToken.pToken.mint(address(this), realAmount);
         // Approve transfer of pTokens by superToken contract
-        subToken.pToken.approve(address(subToken.superToken), subToken.price);
+        subToken.pToken.approve(address(subToken.superToken), realAmount);
         // Upgrade pTokens to super pTokens
-        subToken.superToken.upgrade(subToken.price);
+        subToken.superToken.upgrade(realAmount);
         // Transfer super pTokens to userStreamWallet
-        subToken.superToken.transfer(address(subUsers[nftId].userStreamWallet), subToken.price);
+        subToken.superToken.transfer(address(subUsers[nftId].userStreamWallet), realAmount);
     }
 
     function getScaledBalance(address underlyingToken, uint256 amount) public view returns(uint256) {
@@ -337,8 +358,8 @@ contract PlanController is Ownable {
     }
 
     // Function needs improvements for precision
-    function getFlowRate(address underlyingToken) public view returns(int96){
-        return(int96(uint96(subscriptionTokens[underlyingToken].price / period)));
+    function getFlowRate(uint256 _nftId) public view returns(int96){
+        return(int96(uint96(subUsers[_nftId].realAmount / period)));
     }
     
     function testDepositExtra(address underlyingToken, uint256 amount) external {
