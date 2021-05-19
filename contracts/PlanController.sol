@@ -93,8 +93,6 @@ contract PlanController is Ownable {
     // Superfluid host on Kovan: 0xF0d7d1D47109bA426B9D8A3Cde1941327af1eea3
     ISuperfluid superfluidHost = ISuperfluid(0xF0d7d1D47109bA426B9D8A3Cde1941327af1eea3);
 
-
-
     struct subscriptionToken {
         PToken pToken;     // Placeholder token
         ISuperToken superToken;
