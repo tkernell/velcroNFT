@@ -4,7 +4,7 @@ pragma solidity 0.8.0;
 
 // import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
-import "./SubscriptionNFT.sol";
+// import "./SubscriptionNFT.sol";
 import "./UserPool.sol";
 import { ProviderPool } from "./ProviderPool.sol";
 import "./PToken.sol";
@@ -12,7 +12,7 @@ import "./UserStreamWallet.sol";
 import "./Aave/WadRayMath.sol";
 import "./Aave/ILendingPoolAddressesProviderV2.sol";
 
-import "hardhat/console.sol";
+// import "hardhat/console.sol";
 
 contract ISuperTokenFactory {
     /**
@@ -38,7 +38,7 @@ abstract contract ISuperToken {
      * @dev Returns the amount of tokens owned by an account (`owner`).
      */
     function balanceOf(address account) virtual external view returns(uint256 balance);
-    function transfer(address recipient, uint256 amount) virtual external returns (bool);
+    // function transfer(address recipient, uint256 amount) virtual external returns (bool);
     /**
      * @dev Upgrade ERC20 to SuperToken.
      * @param amount Number of tokens to be upgraded (in 18 decimals)
@@ -46,7 +46,7 @@ abstract contract ISuperToken {
      * NOTE: It will use ´transferFrom´ to get tokens. Before calling this
      * function you should ´approve´ this contract
      */
-    function upgrade(uint256 amount) virtual external;
+    // function upgrade(uint256 amount) virtual external;
 
     /**
      * @dev Upgrade ERC20 to SuperToken and transfer immediately
@@ -69,9 +69,13 @@ interface ILendingPool {
   function getReserveNormalizedIncome(address asset) external view returns (uint256);
 }
 
+interface ISubscriptionNFT {
+    function mint() external returns(uint256);
+}
+
 contract PlanController is Initializable {
     using WadRayMath for uint256;
-    SubscriptionNFT public subNFT;
+    ISubscriptionNFT public subNFT;
     address public userPool;
     address public providerPool;
     address public owner;
@@ -212,7 +216,7 @@ contract PlanController is Initializable {
     function providerWithdrawal(address _underlyingToken) public onlyOwner {
         // Amount = super pToken balance of providerPool
         uint256 amount = subscriptionTokens[_underlyingToken].superToken.balanceOf(providerPool);
-        console.log("@PRW_AMT: %s", amount);
+        // console.log("@PRW_AMT: %s", amount);
         // Convert 'amount' of aTokens from userPool back to underlyingToken
         // Send 'amount' to provider (owner)
         UserPool(userPool).withdrawUnderlying(owner, _underlyingToken, amount);
@@ -255,7 +259,7 @@ contract PlanController is Initializable {
             // console.log((thisSubUser.endTimestamp - time0 + 1));
             // console.log((uint256(int256(getFlowRate(nftId)))));
             interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - ((thisSubUser.endTimestamp - time0) * (uint256(int256(getFlowRate(nftId)))));
-            console.log("Interest calculated: %s", interest);
+            // console.log("Interest calculated: %s", interest);
             adjustedScaledBalance = adjustedScaledBalance - interest.rayDiv(currentLiquidityIndex);
         // Else if the subscription period has ended and no principal remains...
         } else if (subToken.providerWithdrawalTimestamps.length > 0 && subToken.providerWithdrawalTimestamps[subToken.providerWithdrawalTimestamps.length - 1] > thisSubUser.endTimestamp) {
@@ -352,9 +356,9 @@ contract PlanController is Initializable {
         // Approve transfer of pTokens by superToken contract
         subToken.pToken.approve(address(subToken.superToken), realAmount);
         // Upgrade pTokens to super pTokens
-        subToken.superToken.upgrade(realAmount);
+        subToken.superToken.upgradeTo(address(subUsers[nftId].userStreamWallet), realAmount, '');
         // Transfer super pTokens to userStreamWallet
-        subToken.superToken.transfer(address(subUsers[nftId].userStreamWallet), realAmount);
+        // subToken.superToken.transfer(address(subUsers[nftId].userStreamWallet), realAmount);
     }
 
     function getScaledBalance(address underlyingToken, uint256 amount) public view returns(uint256) {
