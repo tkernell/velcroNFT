@@ -7,6 +7,10 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 // import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 // import "@openzeppelin/contracts/access/Ownable.sol";
 
+interface IPlanController {
+    function isSubActive(uint256 nftId) external view returns(bool); 
+}
+
 contract SubscriptionNFT is ERC721 {
     address public owner;
     uint256 counter;
@@ -21,5 +25,17 @@ contract SubscriptionNFT is ERC721 {
         _mint(_to, counter);
         counter++;
         return(counter-1);
+    }
+    
+    function ownerOf(uint256 _nftId) public view override returns(address) {
+        if (IPlanController(owner).isSubActive(_nftId)) {
+            return(super.ownerOf(_nftId));
+        } else {
+            return(address(0));
+        }
+    }
+    
+    function interestOwnerOf(uint256 _nftId) public view returns(address) {
+        return(super.ownerOf(_nftId));
     }
 }

@@ -2,9 +2,7 @@
 
 pragma solidity 0.8.0;
 
-// import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
-// import "./SubscriptionNFT.sol";
 import "./UserPool.sol";
 import { ProviderPool } from "./ProviderPool.sol";
 import "./PToken.sol";
@@ -15,9 +13,6 @@ import "./Aave/ILendingPoolAddressesProviderV2.sol";
 // import "hardhat/console.sol";
 
 contract ISuperTokenFactory {
-    /**
-     * @dev Upgradability modes
-     */
     enum Upgradability {
         NON_UPGRADABLE,
         SEMI_UPGRADABLE,
@@ -34,45 +29,18 @@ contract ISuperTokenFactory {
 }
 
 abstract contract ISuperToken {
-    /**
-     * @dev Returns the amount of tokens owned by an account (`owner`).
-     */
     function balanceOf(address account) virtual external view returns(uint256 balance);
-    // function transfer(address recipient, uint256 amount) virtual external returns (bool);
-    /**
-     * @dev Upgrade ERC20 to SuperToken.
-     * @param amount Number of tokens to be upgraded (in 18 decimals)
-     *
-     * NOTE: It will use ´transferFrom´ to get tokens. Before calling this
-     * function you should ´approve´ this contract
-     */
     function upgrade(uint256 amount) virtual external;
-
-    /**
-     * @dev Upgrade ERC20 to SuperToken and transfer immediately
-     * @param to The account to received upgraded tokens
-     * @param amount Number of tokens to be upgraded (in 18 decimals)
-     * @param data User data for the TokensRecipient callback
-     *
-     * NOTE: It will use ´transferFrom´ to get tokens. Before calling this
-     * function you should ´approve´ this contract
-     */
-    function upgradeTo(address to, uint256 amount, bytes calldata data) virtual external;
     function transfer(address _to, uint256 _amount) virtual external;
 }
 
 interface ILendingPool {
-    /**
-   * @dev Returns the normalized income normalized income of the reserve
-   * @param asset The address of the underlying asset of the reserve
-   * @return The reserve's normalized income
-   */
   function getReserveNormalizedIncome(address asset) external view returns (uint256);
 }
 
 interface ISubscriptionNFT {
     function mint(address _to) external returns(uint256);
-    function ownerOf(uint256 _nftId) external returns(address);
+    function interestOwnerOf(uint256 _nftId) external returns(address);
 }
 
 interface ILauncher {
@@ -140,7 +108,7 @@ contract PlanController is Initializable {
     mapping(uint256 => subUser) public subUsers;
 
     modifier onlyNftOwner(uint256 _nftId) {
-        require(msg.sender == subNFT.ownerOf(_nftId));
+        require(msg.sender == subNFT.interestOwnerOf(_nftId));
         _;
     }
     
@@ -328,10 +296,10 @@ contract PlanController is Initializable {
         subUsers[nftId].startTimestamp = time0;
         subUsers[nftId].startLiquidityIndexArraySize = subToken.liquidityIndices.length;
         subscriptionTokens[thisSubUser.underlyingToken].globalScaledBalance -= getScaledBalance(thisSubUser.underlyingToken, interest);
-        UserPool(userPool).withdrawUnderlying(subNFT.ownerOf(nftId), thisSubUser.underlyingToken, realInterest);
+        UserPool(userPool).withdrawUnderlying(subNFT.interestOwnerOf(nftId), thisSubUser.underlyingToken, realInterest);
     }
 
-    function isSubActive(uint256 nftId) public view onlyOwner returns(bool) {
+    function isSubActive(uint256 nftId) public view returns(bool) {
         return(block.timestamp < subUsers[nftId].endTimestamp);
     }
 

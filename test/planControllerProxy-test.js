@@ -46,13 +46,28 @@ describe("PlanFactory", function() {
     await planController.connect(addr1).createSubscription(DAI_KOVAN_ADDRESS);
     await daiContract.connect(addr1).approve(planController.address, await daiContract.balanceOf(addr1.address));
     await planController.connect(addr1).fundSubscription(0);
+    //
+    await time.increase(10000);
+
+    await planController.providerWithdrawal(DAI_KOVAN_ADDRESS);
+    await planController.connect(addr1).withdrawInterest(0);
 
     await time.increase(10000);
 
     await planController.providerWithdrawal(DAI_KOVAN_ADDRESS);
     await planController.connect(addr1).withdrawInterest(0);
 
+    await planController.connect(addr2).createSubscription(DAI_KOVAN_ADDRESS);
+    await daiContract.connect(addr2).approve(planController.address, await daiContract.balanceOf(addr2.address));
+    await planController.connect(addr2).fundSubscription(1);
 
+    await time.increase(10000);
+
+    await planController.providerWithdrawal(DAI_KOVAN_ADDRESS);
+    await planController.connect(addr2).withdrawInterest(1);
+
+    await time.increase(1);
+    await planController.connect(addr2).withdrawInterest(1);
   })
 
 
