@@ -90,6 +90,7 @@ contract PlanController is Initializable {
     address public providerPool;
     IPlanFactory public planFactory;
     ILauncher public launcher;
+    address public treasury;
     address public owner;
     uint256 public period;
     // SuperTokenFactory on Matic: 0x2C90719f25B10Fc5646c82DA3240C76Fa5BcCF34
@@ -156,7 +157,8 @@ contract PlanController is Initializable {
         address _constantFlowAgreement, 
         address _superfluidHost,
         address _lendingPool,
-        address _lendingPoolAddressProvider
+        address _lendingPoolAddressProvider,
+        address _treasury
         ) public initializer {
             
         launcher = ILauncher(_launcher);
@@ -171,6 +173,7 @@ contract PlanController is Initializable {
         superfluidHost = ISuperfluid(_superfluidHost);
         lendingPool = ILendingPool(_lendingPool);
         lendingPoolAddressesProvider = ILendingPoolAddressesProviderV2(_lendingPoolAddressProvider);
+        treasury = _treasury;
     }
 
     // After checks, create new PToken contract and new SuperToken contract.
@@ -214,7 +217,7 @@ contract PlanController is Initializable {
         require(subToken.active, "PlanController: token not approved");
         
         // TESTING FEE
-        uint256 feePct = 500; // 5%
+        uint256 feePct = planFactory.feePercentage();
         uint256 feeAmount = subToken.price * feePct / 10000;
         uint256 _realAmount = subToken.price - feeAmount;
         
@@ -231,7 +234,9 @@ contract PlanController is Initializable {
         );
 
         // Transfer underlying token from user to userPool
-        IERC20(underlyingToken).transferFrom(msg.sender, address(userPool), subToken.price);
+        IERC20(underlyingToken).transferFrom(msg.sender, address(userPool), _realAmount);
+        // Transfer fee to treasury
+        IERC20(underlyingToken).transferFrom(msg.sender, treasury, feeAmount);
         // Convert underlying token to aToken through userPool
         UserPool(userPool).depositUnderlying(underlyingToken, _realAmount);
         // Record scaled balance

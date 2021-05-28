@@ -27,6 +27,8 @@ describe("PlanFactory", function() {
     planFactory = await PlanFactory.deploy(planControllerLogic.address);
     await planFactory.deployed();
 
+    await planFactory.updateFeePercentage(500);
+
     await planFactory.createPlan(NDAYS);
     let planControllerAddress = await planFactory.plans(0);
 
@@ -44,6 +46,11 @@ describe("PlanFactory", function() {
     await planController.connect(addr1).createSubscription(DAI_KOVAN_ADDRESS);
     await daiContract.connect(addr1).approve(planController.address, await daiContract.balanceOf(addr1.address));
     await planController.connect(addr1).fundSubscription(0);
+
+    await time.increase(10000);
+
+    await planController.providerWithdrawal(DAI_KOVAN_ADDRESS);
+    await planController.connect(addr1).withdrawInterest(0);
 
 
   })

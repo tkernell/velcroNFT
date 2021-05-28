@@ -6,6 +6,7 @@ pragma solidity 0.8.0;
 import "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
 import "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 import "./Launcher.sol";
+import "./VelcroTreasury.sol";
 
 // import "./PlanController.sol";
 interface IPlanController {
@@ -17,7 +18,8 @@ interface IPlanController {
         address _constantFlowAgreement, 
         address _superfluidHost,
         address _lendingPool,
-        address _lendingPoolAddressProvider
+        address _lendingPoolAddressProvider,
+        address _treasury
         ) external;
 }
 
@@ -25,6 +27,7 @@ contract PlanFactory is UpgradeableBeacon {
     address[] public plans;
     uint256 internal _feePercentage;
     address public launcher;
+    VelcroTreasury public treasury;
     
     address public superTokenFactory = 0xF5F666AC8F581bAef8dC36C7C8828303Bd4F8561;
     address public constantFlowAgreement = 0xECa8056809e7e8db04A8fF6e4E82cD889a46FE2F;
@@ -34,6 +37,7 @@ contract PlanFactory is UpgradeableBeacon {
     
     constructor(address _implementation) UpgradeableBeacon(_implementation) {
         launcher = address(new Launcher());
+        treasury = new VelcroTreasury();
     }
     
     function createPlan(uint256 _periodDays) public {
@@ -46,7 +50,8 @@ contract PlanFactory is UpgradeableBeacon {
             constantFlowAgreement,
             superfluidHost,
             lendingPool,
-            lendingPoolAddressProvider
+            lendingPoolAddressProvider,
+            address(treasury)
             );
         plans.push(newPlan);
     }
