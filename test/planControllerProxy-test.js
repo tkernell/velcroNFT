@@ -13,6 +13,7 @@ describe("PlanFactory", function() {
 
   let planFactory;
   let planControllerLogic;
+  let planController;
   let owner, addr1, addr2, addr3;
 
   beforeEach(async function () {
@@ -26,11 +27,25 @@ describe("PlanFactory", function() {
     planFactory = await PlanFactory.deploy(planControllerLogic.address);
     await planFactory.deployed();
 
+    await planFactory.createPlan(NDAYS);
+    let planControllerAddress = await planFactory.plans(0);
+
+    planController = await PlanController.attach(planControllerAddress);
+    await planController.approveToken(DAI_KOVAN_ADDRESS, SUBSCRIPTION_PRICE);
+
+    const ERC20Contract = await ethers.getContractFactory("ERC20");
+    daiContract = await ERC20Contract.attach(DAI_KOVAN_ADDRESS);
+
 
   })
 
   it("Test deployment", async function() {
-    await planFactory.createPlan(NDAYS);
+
+    await planController.connect(addr1).createSubscription(DAI_KOVAN_ADDRESS);
+    await daiContract.connect(addr1).approve(planController.address, await daiContract.balanceOf(addr1.address));
+    await planController.connect(addr1).fundSubscription(0);
+
+
   })
 
 
