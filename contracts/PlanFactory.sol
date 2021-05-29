@@ -2,13 +2,11 @@
 
 pragma solidity 0.8.0;
 
-// import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
 import "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 import { Launcher } from "./Launcher.sol";
 import "./VelcroTreasury.sol";
 
-// import "./PlanController.sol";
 interface IPlanController {
     function initialize(
         uint256 _periodDays, 
