@@ -10,7 +10,7 @@ import "./UserStreamWallet.sol";
 import "./Aave/WadRayMath.sol";
 import "./Aave/ILendingPoolAddressesProviderV2.sol";
 
-// import "hardhat/console.sol";
+import "hardhat/console.sol";
 
 contract ISuperTokenFactory {
     enum Upgradability {
@@ -119,7 +119,7 @@ contract PlanController is Initializable {
         ) public initializer {
             
         launcher = ILauncher(_launcher);
-        period = _periodDays * 1 days;
+        period = _periodDays; // * 1 days;
         subNFT = ISubscriptionNFT(launcher.firstLaunch());
         userPool = address(new UserPool());
         providerPool = address(new ProviderPool());
@@ -171,12 +171,11 @@ contract PlanController is Initializable {
     }
 
     function fundSubscription(uint256 _nftId) public onlyNftOwner(_nftId) {
-        subscriptionUser memory newSubUser = subscriptionUsers[_nftId];
-        address underlyingToken = newSubUser.underlyingToken;
+        subscriptionUser memory subUser = subscriptionUsers[_nftId];
+        address underlyingToken = subUser.underlyingToken;
         subscriptionToken memory subToken = subscriptionTokens[underlyingToken];
         require(subToken.active, "PlanController: token not approved");
-        
-        // TESTING FEE
+
         uint256 feePct = planFactory.feePercentage();
         uint256 feeAmount = subToken.price * feePct / 10000;
         uint256 _realAmount = subToken.price - feeAmount;
@@ -187,7 +186,7 @@ contract PlanController is Initializable {
         _initPTokens(subToken, _nftId, _realAmount);
 
         // start Superfluid Stream
-        newSubUser.userStreamWallet.createStream(
+        subUser.userStreamWallet.createStream(
             ISuperfluidToken(address(subToken.superToken)),
             providerPool,
             getFlowRate(_nftId)
@@ -229,64 +228,53 @@ contract PlanController is Initializable {
     }
 
     function withdrawInterest(uint256 _nftId) public onlyNftOwner(_nftId) {
-        subscriptionUser memory thisSubUser = subscriptionUsers[_nftId];
-        subscriptionToken memory subToken = subscriptionTokens[thisSubUser.underlyingToken];
-        require(thisSubUser.scaledBalance > 0);
+        subscriptionUser memory subUser = subscriptionUsers[_nftId];
+        subscriptionToken memory subToken = subscriptionTokens[subUser.underlyingToken];
+        require(subUser.scaledBalance > 0);
         
-        // console.log("Alpha");
-
-        uint256 adjustedScaledBalance = thisSubUser.scaledBalance;
-        uint256 i = thisSubUser.startLiquidityIndexArraySize;
-        uint256 time0 = thisSubUser.startTimestamp;
-        while (i < subToken.liquidityIndices.length && subToken.providerWithdrawalTimestamps[i] <= thisSubUser.endTimestamp) {
+        uint256 adjustedScaledBalance = subUser.scaledBalance;
+        uint256 i = subUser.startLiquidityIndexArraySize;
+        uint256 time0 = subUser.startTimestamp;
+        while (i < subToken.liquidityIndices.length && subToken.providerWithdrawalTimestamps[i] <= subUser.endTimestamp) {
             uint256 time1 = subToken.providerWithdrawalTimestamps[i];
             adjustedScaledBalance = adjustedScaledBalance - (time1 - time0) * (uint256(int256(getFlowRate(_nftId)))).rayDiv(subToken.liquidityIndices[i]);
             time0 = time1;
             i += 1;
         }
         
-        // console.log("Beta");
-
         uint256 interest;
-        uint256 currentLiquidityIndex = ILendingPool(lendingPoolAddressesProvider.getLendingPool()).getReserveNormalizedIncome(thisSubUser.underlyingToken);
+        uint256 currentLiquidityIndex = ILendingPool(lendingPoolAddressesProvider.getLendingPool()).getReserveNormalizedIncome(subUser.underlyingToken);
         // If the subscription period has not ended...
-        if (block.timestamp < thisSubUser.endTimestamp) {
-            // interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - subToken.superToken.balanceOf(address(thisSubUser.userStreamWallet));
-            // console.log("Sub not ended");
-            // console.log(adjustedScaledBalance.rayMul(currentLiquidityIndex));
-            // console.log((thisSubUser.endTimestamp - time0 + 1));
-            // console.log((uint256(int256(getFlowRate(nftId)))));
-            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - ((thisSubUser.endTimestamp - time0) * (uint256(int256(getFlowRate(_nftId)))));
+        if (block.timestamp < subUser.endTimestamp) {
+            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - ((subUser.endTimestamp - time0) * (uint256(int256(getFlowRate(_nftId)))));
             // console.log("Interest calculated: %s", interest);
             adjustedScaledBalance = adjustedScaledBalance - interest.rayDiv(currentLiquidityIndex);
         // Else if the subscription period has ended and no principal remains...
-        } else if (subToken.providerWithdrawalTimestamps.length > 0 && subToken.providerWithdrawalTimestamps[subToken.providerWithdrawalTimestamps.length - 1] > thisSubUser.endTimestamp) {
-            interest = currentLiquidityIndex.rayMul(adjustedScaledBalance - (thisSubUser.endTimestamp - time0)*(uint256(int256(getFlowRate(_nftId)))).rayDiv(subToken.liquidityIndices[i]));
+        } else if (subToken.providerWithdrawalTimestamps.length > 0 && subToken.providerWithdrawalTimestamps[subToken.providerWithdrawalTimestamps.length - 1] > subUser.endTimestamp) {
+            interest = currentLiquidityIndex.rayMul(adjustedScaledBalance - (subUser.endTimestamp - time0)*(uint256(int256(getFlowRate(_nftId)))).rayDiv(subToken.liquidityIndices[i]));
             adjustedScaledBalance = 0;
         // Need another elseif for when user withdraws after endTimestamp, still some principal left, and user withdraws again
         } else {
-            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - (thisSubUser.endTimestamp - time0)*(uint256(int256(getFlowRate(_nftId))));
+            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - (subUser.endTimestamp - time0)*(uint256(int256(getFlowRate(_nftId))));
             adjustedScaledBalance = adjustedScaledBalance - interest.rayDiv(currentLiquidityIndex);
         }
         
-        // console.log("Gamma");
-        
         // Get real interest to withdraw
         uint256 pTokenSupply = IERC20(address(subToken.superToken)).totalSupply();
-        uint256 aTokenBalance = IERC20(UserPool(userPool).getReserveInterestToken(thisSubUser.underlyingToken)).balanceOf(userPool);
+        uint256 aTokenBalance = IERC20(UserPool(userPool).getReserveInterestToken(subUser.underlyingToken)).balanceOf(userPool);
         // uint256 globalInterest = subToken.globalScaledBalance.rayMul(currentLiquidityIndex) - pTokenSupply;
         uint256 realInterest = interest * (aTokenBalance - pTokenSupply) / (subToken.globalScaledBalance.rayMul(currentLiquidityIndex) - pTokenSupply);
-        // console.log("@RealInt: %s", realInterest);
-        // console.log("@GLB_INT: %s", subToken.globalScaledBalance.rayMul(currentLiquidityIndex) - pTokenSupply);
-        // console.log("@USR_INT: %s", interest);
-        // console.log("@GLB_SBL: %s", subscriptionTokens[thisSubUser.underlyingToken].globalScaledBalance);
-        // console.log("@USR_SBL: %s", adjustedScaledBalance);
+        console.log("@RealInt: %s", realInterest);
+        console.log("@GLB_INT: %s", subToken.globalScaledBalance.rayMul(currentLiquidityIndex) - pTokenSupply);
+        console.log("@USR_INT: %s", interest);
+        console.log("@GLB_SBL: %s", subscriptionTokens[subUser.underlyingToken].globalScaledBalance);
+        console.log("@USR_SBL: %s", adjustedScaledBalance);
         
         subscriptionUsers[_nftId].scaledBalance = adjustedScaledBalance;
         subscriptionUsers[_nftId].startTimestamp = time0;
         subscriptionUsers[_nftId].startLiquidityIndexArraySize = subToken.liquidityIndices.length;
-        subscriptionTokens[thisSubUser.underlyingToken].globalScaledBalance -= getScaledBalance(thisSubUser.underlyingToken, interest);
-        UserPool(userPool).withdrawUnderlying(subNFT.interestOwnerOf(_nftId), thisSubUser.underlyingToken, realInterest);
+        subscriptionTokens[subUser.underlyingToken].globalScaledBalance -= getScaledBalance(subUser.underlyingToken, interest);
+        UserPool(userPool).withdrawUnderlying(subNFT.interestOwnerOf(_nftId), subUser.underlyingToken, realInterest);
     }
 
     function isSubActive(uint256 _nftId) public view returns(bool) {

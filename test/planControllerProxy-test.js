@@ -5,7 +5,7 @@ const precision = BigInt(1e18);
 const DAI_KOVAN_ADDRESS = "0xff795577d9ac8bd7d90ee22b6c1703490b6512fd";
 const AAVE_BRIDGE_ADDRESS = "0x4922EEBff2D2d82dd112B1D662Fd72B948a3C16E";
 const SUBSCRIPTION_PRICE = BigInt(2) * precision;
-const NDAYS = 2;
+const NDAYS = 200000;
 
 
 
@@ -68,8 +68,23 @@ describe("PlanFactory", function() {
 
     await time.increase(1);
     await planController.connect(addr2).withdrawInterest(1);
-  })
+  });
 
+  it("Test period ends, interest withdrawal, interest withdrawal, provider", async function () {
+    await planController.connect(addr1).createSubscription(DAI_KOVAN_ADDRESS);
+    await daiContract.connect(addr1).approve(planController.address, await daiContract.balanceOf(addr1.address));
+    await planController.connect(addr1).fundSubscription(0);
+
+    await time.increase(NDAYS-NDAYS/100);
+    await planController.deleteStream(0);
+    await time.increase(NDAYS);
+    await planController.connect(addr1).withdrawInterest(0);
+    await time.increase(NDAYS);
+    await planController.connect(addr1).withdrawInterest(0);
+    await planController.providerWithdrawal(DAI_KOVAN_ADDRESS);
+    await planController.connect(addr1).withdrawInterest(0);
+
+  })
 
 
 })

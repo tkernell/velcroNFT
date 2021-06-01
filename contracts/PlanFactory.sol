@@ -22,6 +22,9 @@ interface IPlanController {
 }
 
 contract PlanFactory is UpgradeableBeacon {
+    
+    event PlanCreated(address _plan, address _creator);
+    
     address[] public plans;
     uint256 internal _feePercentage;
     address public launcher;
@@ -52,10 +55,6 @@ contract PlanFactory is UpgradeableBeacon {
             address(treasury)
             );
         plans.push(newPlan);
-    }
-    
-    function createProxy() public {
-        
     }
     
     function feePercentage() public view returns(uint256) {
