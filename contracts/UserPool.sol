@@ -9,6 +9,7 @@ interface IAaveBridge {
     function deposit(address assetToken, uint256 assetAmount, uint256 referralCode) external returns (uint256);
     function withdraw(address receiver, address assetToken, uint256 assetAmount) external;
     function getReserveInterestToken(address assetToken) external view returns (address aTokenAddress);
+    function isReserveActive(address assetToken) external view returns (bool);
 }
 
 contract UserPool is Ownable {
@@ -27,5 +28,9 @@ contract UserPool is Ownable {
     
     function getReserveInterestToken(address assetToken) external view returns(address) {
         return(bridge.getReserveInterestToken(assetToken));
+    }
+    
+    function isReserveActive(address assetToken) external view returns(bool) {
+        return(bridge.isReserveActive(assetToken));
     }
 }

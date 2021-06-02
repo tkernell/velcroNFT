@@ -2,8 +2,7 @@
 
 pragma solidity 0.8.0;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "./SubscriptionNFT.sol";
+import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import "./UserPool.sol";
 import { ProviderPool } from "./ProviderPool.sol";
 import "./PToken.sol";
@@ -14,15 +13,9 @@ import "./Aave/ILendingPoolAddressesProviderV2.sol";
 import "hardhat/console.sol";
 
 contract ISuperTokenFactory {
-    /**
-     * @dev Upgradability modes
-     */
     enum Upgradability {
-        /// Non upgradable super token, `host.updateSuperTokenLogic` will revert
         NON_UPGRADABLE,
-        /// Upgradable through `host.updateSuperTokenLogic` operation
         SEMI_UPGRADABLE,
-        /// Always using the latest super token logic
         FULL_UPGRADABE
     }
 
@@ -35,63 +28,49 @@ contract ISuperTokenFactory {
     ) public returns (ISuperToken superToken) {}
 }
 
-abstract contract ISuperToken {
-    /**
-     * @dev Returns the amount of tokens owned by an account (`owner`).
-     */
-    function balanceOf(address account) virtual external view returns(uint256 balance);
-    function transfer(address recipient, uint256 amount) virtual external returns (bool);
-    /**
-     * @dev Upgrade ERC20 to SuperToken.
-     * @param amount Number of tokens to be upgraded (in 18 decimals)
-     *
-     * NOTE: It will use ´transferFrom´ to get tokens. Before calling this
-     * function you should ´approve´ this contract
-     */
-    function upgrade(uint256 amount) virtual external;
-
-    /**
-     * @dev Upgrade ERC20 to SuperToken and transfer immediately
-     * @param to The account to received upgraded tokens
-     * @param amount Number of tokens to be upgraded (in 18 decimals)
-     * @param data User data for the TokensRecipient callback
-     *
-     * NOTE: It will use ´transferFrom´ to get tokens. Before calling this
-     * function you should ´approve´ this contract
-     */
-    function upgradeTo(address to, uint256 amount, bytes calldata data) virtual external;
+interface ISuperToken {
+    function balanceOf(address account) external view returns(uint256 balance);
+    function upgrade(uint256 amount) external;
+    function transfer(address _to, uint256 _amount) external;
 }
 
 interface ILendingPool {
-    /**
-   * @dev Returns the normalized income normalized income of the reserve
-   * @param asset The address of the underlying asset of the reserve
-   * @return The reserve's normalized income
-   */
   function getReserveNormalizedIncome(address asset) external view returns (uint256);
 }
 
-contract PlanController is Ownable {
+interface ISubscriptionNFT {
+    function mint(address _to) external returns(uint256);
+    function interestOwnerOf(uint256 _nftId) external returns(address);
+}
+
+interface ILauncher {
+    function firstLaunch() external returns(address);
+}
+
+interface IPlanFactory {
+    function feePercentage() external returns(uint256);
+}
+
+contract PlanController is Initializable {
+    
+    event SubscriptionCreated(address _user, address _token, uint256 _nftId);
+    event SubscriptionFunded(address _user, address _token, uint256 _nftId);
+    
     using WadRayMath for uint256;
-    SubscriptionNFT public subNFT;
+    ISubscriptionNFT public subNFT;
     address public userPool;
     address public providerPool;
+    IPlanFactory public planFactory;
+    ILauncher public launcher;
+    address public treasury;
+    address public provider;
     uint256 public period;
-    // SuperTokenFactory on Matic: 0x2C90719f25B10Fc5646c82DA3240C76Fa5BcCF34
-    // SuperTokenFactory on Kovan: 0xF5F666AC8F581bAef8dC36C7C8828303Bd4F8561
-    ISuperTokenFactory superTokenFactory = ISuperTokenFactory(0xF5F666AC8F581bAef8dC36C7C8828303Bd4F8561);
-    // ConstantFlowAgreementV1 on Matic: 0x6EeE6060f715257b970700bc2656De21dEdF074C
-    // ConstantFlowAgreementV1 on Kovan: 0xECa8056809e7e8db04A8fF6e4E82cD889a46FE2F
-    IConstantFlowAgreementV1 constantFlowAgreement = IConstantFlowAgreementV1(0xECa8056809e7e8db04A8fF6e4E82cD889a46FE2F);
-    // Aave LendingPool on Matic: 0x8dFf5E27EA6b7AC08EbFdf9eB090F32ee9a30fcf
-    // Aave LendingPool on Kovan: 0xE0fBa4Fc209b4948668006B2bE61711b7f465bAe
-    ILendingPool lendingPool = ILendingPool(0xE0fBa4Fc209b4948668006B2bE61711b7f465bAe);
-    // Aave LendingPoolAddressesProviderV2 on Matic: 0xd05e3E715d945B59290df0ae8eF85c1BdB684744
-    // Aave LendingPoolAddressesProviderV2 on Kovan: 0x88757f2f99175387aB4C6a4b3067c77A695b0349
-    ILendingPoolAddressesProviderV2 lendingPoolAddressesProvider = ILendingPoolAddressesProviderV2(0x88757f2f99175387aB4C6a4b3067c77A695b0349);
-    // Superfluid host on Matic:
-    // Superfluid host on Kovan: 0xF0d7d1D47109bA426B9D8A3Cde1941327af1eea3
-    ISuperfluid superfluidHost = ISuperfluid(0xF0d7d1D47109bA426B9D8A3Cde1941327af1eea3);
+    ISuperTokenFactory superTokenFactory;
+    IConstantFlowAgreementV1 constantFlowAgreement;
+    ILendingPool lendingPool;
+    ILendingPoolAddressesProviderV2 lendingPoolAddressesProvider;
+    ISuperfluid superfluidHost;
+
 
     struct subscriptionToken {
         PToken pToken;     // Placeholder token
@@ -103,7 +82,7 @@ contract PlanController is Ownable {
         bool active;
     }
 
-    struct subUser {
+    struct subscriptionUser {
         address underlyingToken;
         uint256 startTimestamp;
         uint256 endTimestamp;
@@ -114,25 +93,63 @@ contract PlanController is Ownable {
     }
 
     mapping(address => subscriptionToken) public subscriptionTokens;
-    // Mapping from NFT Token ID to subUser
-    mapping(uint256 => subUser) public subUsers;
+    // Mapping from NFT Token ID to Subscription User
+    mapping(uint256 => subscriptionUser) public subscriptionUsers;
 
     modifier onlyNftOwner(uint256 _nftId) {
-        require(msg.sender == subNFT.ownerOf(_nftId));
+        require(msg.sender == subNFT.interestOwnerOf(_nftId));
         _;
     }
-
-    constructor(uint256 _periodDays) {
-        period = _periodDays * 1 days;
-        subNFT = new SubscriptionNFT();
+    
+    modifier onlyProvider {
+        require(msg.sender == provider);
+        _;
+    }
+    
+    // /**
+    //  * @dev Initialized contract parameters and launches side contracts
+    //  * @param _period Subscription period length in seconds
+    //  * @param _provider Address of service provider
+    //  * @param _launcher Address of external contract launcher
+    //  * @param _superTokenFactory Superfluid token factory
+    //  * @param _constantFlowAgreement Superfluid constant flow agreement
+    //  * @param _superfluidHost Superfluid contract
+    //  * @param _lendingPool Aave lending pool contract
+    //  * @param _lendingPoolAddressProvider Aave lending pool address provider
+    //  * @param _treasury VelcroNFT treasury
+    //  */
+    function initialize(
+        uint256 _period, 
+        address _provider, 
+        address _launcher, 
+        address _superTokenFactory, 
+        address _constantFlowAgreement, 
+        address _superfluidHost,
+        address _lendingPool,
+        address _lendingPoolAddressProvider,
+        address _treasury
+        ) public initializer {
+            
+        launcher = ILauncher(_launcher);
+        period = _period;
+        subNFT = ISubscriptionNFT(launcher.firstLaunch());
         userPool = address(new UserPool());
         providerPool = address(new ProviderPool());
-        // provider = msg.sender;
+        provider = _provider;
+        planFactory = IPlanFactory(msg.sender);
+        superTokenFactory = ISuperTokenFactory(_superTokenFactory);
+        constantFlowAgreement = IConstantFlowAgreementV1(_constantFlowAgreement);
+        superfluidHost = ISuperfluid(_superfluidHost);
+        lendingPool = ILendingPool(_lendingPool);
+        lendingPoolAddressesProvider = ILendingPoolAddressesProviderV2(_lendingPoolAddressProvider);
+        treasury = _treasury;
     }
 
     // After checks, create new PToken contract and new SuperToken contract.
-    function approveToken(address _underlyingToken, uint256 _price) public onlyOwner {
+    
+    function approveToken(address _underlyingToken, uint256 _price) public onlyProvider {
         require(_underlyingToken != address(0));
+        require(UserPool(userPool).isReserveActive(_underlyingToken));
         require(!subscriptionTokens[_underlyingToken].active); // Require that this token has not already been approved
 
         PToken newPToken = new PToken();
@@ -160,58 +177,60 @@ contract PlanController is Ownable {
         require(subscriptionTokens[_underlyingToken].active);
 
         // Mint subscription NFT
-        uint256 nftId = _initNewSubscriber(_underlyingToken);
-        return(nftId);
+        uint256 _nftId = _initNewSubscriber(_underlyingToken);
+        
+        emit SubscriptionCreated(msg.sender, _underlyingToken, _nftId);
+        
+        return(_nftId);
     }
 
-    function fundSubscription(uint256 nftId) public onlyNftOwner(nftId) {
-        subUser memory newSubUser = subUsers[nftId];
-        address underlyingToken = newSubUser.underlyingToken;
+    function fundSubscription(uint256 _nftId) public onlyNftOwner(_nftId) {
+        subscriptionUser memory subUser = subscriptionUsers[_nftId];
+        address underlyingToken = subUser.underlyingToken;
         subscriptionToken memory subToken = subscriptionTokens[underlyingToken];
         require(subToken.active, "PlanController: token not approved");
-        
-        // TESTING FEE
-        uint256 feePct = 500; // 5%
+
+        uint256 feePct = planFactory.feePercentage();
         uint256 feeAmount = subToken.price * feePct / 10000;
         uint256 _realAmount = subToken.price - feeAmount;
         
-        subUsers[nftId].realAmount = _realAmount;
+        subscriptionUsers[_nftId].realAmount = _realAmount;
 
         // Mint, approve, upgrade, transfer pToken
-        _initPTokens(subToken, nftId, _realAmount);
+        _initPTokens(subToken, _nftId, _realAmount);
 
         // start Superfluid Stream
-        newSubUser.userStreamWallet.createStream(
+        subUser.userStreamWallet.createStream(
             ISuperfluidToken(address(subToken.superToken)),
             providerPool,
-            getFlowRate(nftId)
+            getFlowRate(_nftId)
         );
 
         // Transfer underlying token from user to userPool
-        IERC20(underlyingToken).transferFrom(msg.sender, address(userPool), subToken.price);
+        IERC20(underlyingToken).transferFrom(msg.sender, address(userPool), _realAmount);
+        // Transfer fee to treasury
+        IERC20(underlyingToken).transferFrom(msg.sender, treasury, feeAmount);
         // Convert underlying token to aToken through userPool
         UserPool(userPool).depositUnderlying(underlyingToken, _realAmount);
         // Record scaled balance
-        subUsers[nftId].scaledBalance = getScaledBalance(underlyingToken, _realAmount);
+        subscriptionUsers[_nftId].scaledBalance = getScaledBalance(underlyingToken, _realAmount);
         // Record subscription start timestamp
-        subUsers[nftId].startTimestamp = block.timestamp;
+        subscriptionUsers[_nftId].startTimestamp = block.timestamp;
         // Record subscription end timestamp
-        subUsers[nftId].endTimestamp = block.timestamp + period;
+        subscriptionUsers[_nftId].endTimestamp = block.timestamp + period;
         // Record liquidityIndices array size
-        subUsers[nftId].startLiquidityIndexArraySize = subToken.liquidityIndices.length;
+        subscriptionUsers[_nftId].startLiquidityIndexArraySize = subToken.liquidityIndices.length;
         // Add user's scaled balance to global scaled balance
-        subscriptionTokens[underlyingToken].globalScaledBalance += subUsers[nftId].scaledBalance;
-        // Record real amount after fee
-        // subUsers[nftId].realAmount = _realAmount;
+        subscriptionTokens[underlyingToken].globalScaledBalance += subscriptionUsers[_nftId].scaledBalance;
     }
 
-    function providerWithdrawal(address _underlyingToken) public onlyOwner {
+    function providerWithdrawal(address _underlyingToken) public onlyProvider {
         // Amount = super pToken balance of providerPool
         uint256 amount = subscriptionTokens[_underlyingToken].superToken.balanceOf(providerPool);
-        console.log("@PRW_AMT: %s", amount);
+        // console.log("@PRW_AMT: %s", amount);
         // Convert 'amount' of aTokens from userPool back to underlyingToken
         // Send 'amount' to provider (owner)
-        UserPool(userPool).withdrawUnderlying(owner(), _underlyingToken, amount);
+        UserPool(userPool).withdrawUnderlying(provider, _underlyingToken, amount);
         // Push liquidityIndex from Aave lendingPool.getReserveNormalizedIncome to subscriptionTokens[_underlyingToken].liquidityIndices
         subscriptionTokens[_underlyingToken].liquidityIndices.push(ILendingPool(lendingPoolAddressesProvider.getLendingPool()).getReserveNormalizedIncome(_underlyingToken));
         // Push block timestamp to subscriptionTokens[_underlyingToken].providerWithdrawalTimestamps
@@ -222,106 +241,64 @@ contract PlanController is Ownable {
         subscriptionTokens[_underlyingToken].globalScaledBalance -= getScaledBalance(_underlyingToken, amount);
     }
 
-    function withdrawInterest(uint256 nftId) public onlyNftOwner(nftId) {
-        subUser memory thisSubUser = subUsers[nftId];
-        subscriptionToken memory subToken = subscriptionTokens[thisSubUser.underlyingToken];
-        require(thisSubUser.scaledBalance > 0, "No interest to withdraw");
+    function withdrawInterest(uint256 _nftId) public onlyNftOwner(_nftId) {
+        subscriptionUser memory subUser = subscriptionUsers[_nftId];
+        subscriptionToken memory subToken = subscriptionTokens[subUser.underlyingToken];
+        require(subUser.scaledBalance > 0);
         
-        console.log("Alpha");
-
-        uint256 adjustedScaledBalance = thisSubUser.scaledBalance;
-        uint256 i = thisSubUser.startLiquidityIndexArraySize;
-        uint256 time0 = thisSubUser.startTimestamp;
-        while (i < subToken.liquidityIndices.length && subToken.providerWithdrawalTimestamps[i] <= thisSubUser.endTimestamp) {
+        uint256 adjustedScaledBalance = subUser.scaledBalance;
+        uint256 i = subUser.startLiquidityIndexArraySize;
+        uint256 time0 = subUser.startTimestamp;
+        while (i < subToken.liquidityIndices.length && subToken.providerWithdrawalTimestamps[i] <= subUser.endTimestamp) {
             uint256 time1 = subToken.providerWithdrawalTimestamps[i];
-            adjustedScaledBalance = adjustedScaledBalance - (time1 - time0) * (uint256(int256(getFlowRate(nftId)))).rayDiv(subToken.liquidityIndices[i]);
+            adjustedScaledBalance = adjustedScaledBalance - (time1 - time0) * (uint256(int256(getFlowRate(_nftId)))).rayDiv(subToken.liquidityIndices[i]);
             time0 = time1;
             i += 1;
         }
         
-        console.log("Beta");
-
         uint256 interest;
-        uint256 currentLiquidityIndex = ILendingPool(lendingPoolAddressesProvider.getLendingPool()).getReserveNormalizedIncome(thisSubUser.underlyingToken);
+        uint256 currentLiquidityIndex = ILendingPool(lendingPoolAddressesProvider.getLendingPool()).getReserveNormalizedIncome(subUser.underlyingToken);
         // If the subscription period has not ended...
-        if (block.timestamp < thisSubUser.endTimestamp) {
-            // interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - subToken.superToken.balanceOf(address(thisSubUser.userStreamWallet));
-            console.log("Sub not ended");
-            console.log(adjustedScaledBalance.rayMul(currentLiquidityIndex));
-            console.log((thisSubUser.endTimestamp - time0 + 1));
-            console.log((uint256(int256(getFlowRate(nftId)))));
-            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - ((thisSubUser.endTimestamp - time0) * (uint256(int256(getFlowRate(nftId)))));
-            console.log("Interest calculated: %s", interest);
+        if (block.timestamp < subUser.endTimestamp) {
+            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - ((subUser.endTimestamp - time0) * (uint256(int256(getFlowRate(_nftId)))));
+            // console.log("Interest calculated: %s", interest);
             adjustedScaledBalance = adjustedScaledBalance - interest.rayDiv(currentLiquidityIndex);
         // Else if the subscription period has ended and no principal remains...
-        } else if (subToken.providerWithdrawalTimestamps.length > 0 && subToken.providerWithdrawalTimestamps[subToken.providerWithdrawalTimestamps.length - 1] > thisSubUser.endTimestamp) {
-            interest = currentLiquidityIndex.rayMul(adjustedScaledBalance - (thisSubUser.endTimestamp - time0)*(uint256(int256(getFlowRate(nftId)))).rayDiv(subToken.liquidityIndices[i]));
+        } else if (subToken.providerWithdrawalTimestamps.length > 0 && subToken.providerWithdrawalTimestamps[subToken.providerWithdrawalTimestamps.length - 1] > subUser.endTimestamp) {
+            interest = currentLiquidityIndex.rayMul(adjustedScaledBalance - (subUser.endTimestamp - time0)*(uint256(int256(getFlowRate(_nftId)))).rayDiv(subToken.liquidityIndices[i]));
             adjustedScaledBalance = 0;
         // Need another elseif for when user withdraws after endTimestamp, still some principal left, and user withdraws again
         } else {
-            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - (thisSubUser.endTimestamp - time0)*(uint256(int256(getFlowRate(nftId))));
+            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - (subUser.endTimestamp - time0)*(uint256(int256(getFlowRate(_nftId))));
             adjustedScaledBalance = adjustedScaledBalance - interest.rayDiv(currentLiquidityIndex);
         }
         
-        console.log("Gamma");
-        
         // Get real interest to withdraw
         uint256 pTokenSupply = IERC20(address(subToken.superToken)).totalSupply();
-        uint256 aTokenBalance = IERC20(UserPool(userPool).getReserveInterestToken(thisSubUser.underlyingToken)).balanceOf(userPool);
+        uint256 aTokenBalance = IERC20(UserPool(userPool).getReserveInterestToken(subUser.underlyingToken)).balanceOf(userPool);
         // uint256 globalInterest = subToken.globalScaledBalance.rayMul(currentLiquidityIndex) - pTokenSupply;
         uint256 realInterest = interest * (aTokenBalance - pTokenSupply) / (subToken.globalScaledBalance.rayMul(currentLiquidityIndex) - pTokenSupply);
         console.log("@RealInt: %s", realInterest);
         console.log("@GLB_INT: %s", subToken.globalScaledBalance.rayMul(currentLiquidityIndex) - pTokenSupply);
         console.log("@USR_INT: %s", interest);
-        console.log("@GLB_SBL: %s", subscriptionTokens[thisSubUser.underlyingToken].globalScaledBalance);
+        console.log("@GLB_SBL: %s", subscriptionTokens[subUser.underlyingToken].globalScaledBalance);
         console.log("@USR_SBL: %s", adjustedScaledBalance);
         
-        subUsers[nftId].scaledBalance = adjustedScaledBalance;
-        subUsers[nftId].startTimestamp = time0;
-        subUsers[nftId].startLiquidityIndexArraySize = subToken.liquidityIndices.length;
-        subscriptionTokens[thisSubUser.underlyingToken].globalScaledBalance -= getScaledBalance(thisSubUser.underlyingToken, interest);
-        UserPool(userPool).withdrawUnderlying(subNFT.ownerOf(nftId), thisSubUser.underlyingToken, realInterest);
-    }
-    
-    function withdrawInterest2(uint256 nftId) public onlyNftOwner(nftId) {
-        subUser memory thisSubUser = subUsers[nftId];
-        subscriptionToken memory subToken = subscriptionTokens[thisSubUser.underlyingToken];
-        require(thisSubUser.scaledBalance > 0);
-
-        uint256 adjustedScaledBalance = thisSubUser.scaledBalance;
-        uint256 i = thisSubUser.startLiquidityIndexArraySize;
-        uint256 time0 = thisSubUser.startTimestamp;
-        // Subtract each provider withdrawal amount before user's subscription end timestamp
-        while (i < subToken.liquidityIndices.length && subToken.providerWithdrawalTimestamps[i] < thisSubUser.endTimestamp) {
-            adjustedScaledBalance -= ((subToken.providerWithdrawalTimestamps[i] - time0) * uint256(int256(getFlowRate(nftId)))).rayDiv(subToken.liquidityIndices[i]);
-            time0 = subToken.providerWithdrawalTimestamps[i];
-            i++;
-        }
-        
-        uint256 currentLiquidityIndex = ILendingPool(lendingPoolAddressesProvider.getLendingPool()).getReserveNormalizedIncome(thisSubUser.underlyingToken);
-        uint256 interest;
-        if (block.timestamp < thisSubUser.endTimestamp) {
-            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - ((thisSubUser.endTimestamp - time0) * uint256(int256(getFlowRate(nftId))));
-            adjustedScaledBalance = adjustedScaledBalance - getScaledBalance(thisSubUser.underlyingToken, interest);
-        } else if (subToken.liquidityIndices.length >= i) {
-            interest = adjustedScaledBalance.rayMul(subToken.liquidityIndices[i]) - ((thisSubUser.endTimestamp - time0) * uint256(int256(getFlowRate(nftId))));
-            adjustedScaledBalance = 0;
-        } else {
-            interest = adjustedScaledBalance.rayMul(currentLiquidityIndex) - ((thisSubUser.endTimestamp - time0) * uint256(int256(getFlowRate(nftId))));
-        }
-        
-        subUsers[nftId].startLiquidityIndexArraySize = i;
-        
+        subscriptionUsers[_nftId].scaledBalance = adjustedScaledBalance;
+        subscriptionUsers[_nftId].startTimestamp = time0;
+        subscriptionUsers[_nftId].startLiquidityIndexArraySize = subToken.liquidityIndices.length;
+        subscriptionTokens[subUser.underlyingToken].globalScaledBalance -= getScaledBalance(subUser.underlyingToken, interest);
+        UserPool(userPool).withdrawUnderlying(subNFT.interestOwnerOf(_nftId), subUser.underlyingToken, realInterest);
     }
 
-    function isSubActive(uint256 nftId) public view onlyOwner returns(bool) {
-        return(block.timestamp < subUsers[nftId].endTimestamp);
+    function isSubscriptionActive(uint256 _nftId) public view returns(bool) {
+        return(block.timestamp < subscriptionUsers[_nftId].endTimestamp);
     }
 
-    function deleteStream(uint256 nftId) public onlyOwner {
-        subUser memory thisSubUser = subUsers[nftId];
-        subscriptionToken memory subToken = subscriptionTokens[thisSubUser.underlyingToken];
-        thisSubUser.userStreamWallet.deleteStream(ISuperfluidToken(address(subToken.superToken)), address(providerPool));
+    function deleteStream(uint256 _nftId) public onlyProvider {
+        subscriptionUser memory subUser = subscriptionUsers[_nftId];
+        subscriptionToken memory subToken = subscriptionTokens[subUser.underlyingToken];
+        subUser.userStreamWallet.deleteStream(ISuperfluidToken(address(subToken.superToken)), address(providerPool));
     }
 
     function viewIndicesAndTimestamps(address _underlyingToken, uint256 _index) public view returns(uint256 liquidityIndex, uint256 timestamp) {
@@ -338,34 +315,33 @@ contract PlanController is Ownable {
         // Generate new UserStreamWallet contract
         UserStreamWallet newUserStreamWallet = new UserStreamWallet(constantFlowAgreement, superfluidHost);
         // Save subscriber parameters
-        subUsers[nftId] = subUser(_underlyingToken, 0, 0, 0, newUserStreamWallet, 0, 0);
+        subscriptionUsers[nftId] = subscriptionUser(_underlyingToken, 0, 0, 0, newUserStreamWallet, 0, 0);
         return(nftId);
     }
 
-    function _initPTokens(subscriptionToken memory subToken, uint256 nftId, uint256 realAmount) internal {
+    function _initPTokens(subscriptionToken memory _subToken, uint256 _nftId, uint256 _realAmount) internal {
         // Mint pTokens
-        subToken.pToken.mint(address(this), realAmount);
+        _subToken.pToken.mint(address(this), _realAmount);
         // Approve transfer of pTokens by superToken contract
-        subToken.pToken.approve(address(subToken.superToken), realAmount);
+        _subToken.pToken.approve(address(_subToken.superToken), _realAmount);
         // Upgrade pTokens to super pTokens
-        subToken.superToken.upgrade(realAmount);
+        // subToken.superToken.upgradeTo(address(subUsers[nftId].userStreamWallet), realAmount, '');
+        _subToken.superToken.upgrade(_realAmount);
         // Transfer super pTokens to userStreamWallet
-        subToken.superToken.transfer(address(subUsers[nftId].userStreamWallet), realAmount);
+        _subToken.superToken.transfer(address(subscriptionUsers[_nftId].userStreamWallet), _realAmount);
     }
 
-    function getScaledBalance(address underlyingToken, uint256 amount) public view returns(uint256) {
-        return(amount.rayDiv(ILendingPool(lendingPoolAddressesProvider.getLendingPool()).getReserveNormalizedIncome(underlyingToken)));
+    function getScaledBalance(address _underlyingToken, uint256 _amount) public view returns(uint256) {
+        return(_amount.rayDiv(ILendingPool(lendingPoolAddressesProvider.getLendingPool()).getReserveNormalizedIncome(_underlyingToken)));
     }
 
-    // Function needs improvements for precision
     function getFlowRate(uint256 _nftId) public view returns(int96){
-        return(int96(uint96(subUsers[_nftId].realAmount / period)));
+        return(int96(uint96(subscriptionUsers[_nftId].realAmount / period)));
     }
     
-    function testDepositExtra(address underlyingToken, uint256 amount) external {
-        IERC20(underlyingToken).transferFrom(msg.sender, address(userPool), amount);
-        UserPool(userPool).depositUnderlying(underlyingToken, amount);
-    }
-    
+    // function testDepositExtra(address underlyingToken, uint256 amount) external {
+    //     IERC20(underlyingToken).transferFrom(msg.sender, address(userPool), amount);
+    //     UserPool(userPool).depositUnderlying(underlyingToken, amount);
+    // }
     
 }

@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@openzeppelin/contracts": "^4.0.0",
+    "@openzeppelin/contracts-upgradeable": "^4.1.0",
     "@superfluid-finance/ethereum-contracts": "^1.0.0-rc.2"
   }
 }
