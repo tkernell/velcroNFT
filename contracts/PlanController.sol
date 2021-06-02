@@ -28,10 +28,10 @@ contract ISuperTokenFactory {
     ) public returns (ISuperToken superToken) {}
 }
 
-abstract contract ISuperToken {
-    function balanceOf(address account) virtual external view returns(uint256 balance);
-    function upgrade(uint256 amount) virtual external;
-    function transfer(address _to, uint256 _amount) virtual external;
+interface ISuperToken {
+    function balanceOf(address account) external view returns(uint256 balance);
+    function upgrade(uint256 amount) external;
+    function transfer(address _to, uint256 _amount) external;
 }
 
 interface ILendingPool {
@@ -63,7 +63,7 @@ contract PlanController is Initializable {
     IPlanFactory public planFactory;
     ILauncher public launcher;
     address public treasury;
-    address public owner;
+    address public provider;
     uint256 public period;
     ISuperTokenFactory superTokenFactory;
     IConstantFlowAgreementV1 constantFlowAgreement;
@@ -101,14 +101,26 @@ contract PlanController is Initializable {
         _;
     }
     
-    modifier onlyOwner {
-        require(msg.sender == owner);
+    modifier onlyProvider {
+        require(msg.sender == provider);
         _;
     }
-
+    
+    // /**
+    //  * @dev Initialized contract parameters and launches side contracts
+    //  * @param _period Subscription period length in seconds
+    //  * @param _provider Address of service provider
+    //  * @param _launcher Address of external contract launcher
+    //  * @param _superTokenFactory Superfluid token factory
+    //  * @param _constantFlowAgreement Superfluid constant flow agreement
+    //  * @param _superfluidHost Superfluid contract
+    //  * @param _lendingPool Aave lending pool contract
+    //  * @param _lendingPoolAddressProvider Aave lending pool address provider
+    //  * @param _treasury VelcroNFT treasury
+    //  */
     function initialize(
-        uint256 _periodDays, 
-        address _owner, 
+        uint256 _period, 
+        address _provider, 
         address _launcher, 
         address _superTokenFactory, 
         address _constantFlowAgreement, 
@@ -119,11 +131,11 @@ contract PlanController is Initializable {
         ) public initializer {
             
         launcher = ILauncher(_launcher);
-        period = _periodDays; // * 1 days;
+        period = _period;
         subNFT = ISubscriptionNFT(launcher.firstLaunch());
         userPool = address(new UserPool());
         providerPool = address(new ProviderPool());
-        owner = _owner;
+        provider = _provider;
         planFactory = IPlanFactory(msg.sender);
         superTokenFactory = ISuperTokenFactory(_superTokenFactory);
         constantFlowAgreement = IConstantFlowAgreementV1(_constantFlowAgreement);
@@ -134,8 +146,10 @@ contract PlanController is Initializable {
     }
 
     // After checks, create new PToken contract and new SuperToken contract.
-    function approveToken(address _underlyingToken, uint256 _price) public onlyOwner {
+    
+    function approveToken(address _underlyingToken, uint256 _price) public onlyProvider {
         require(_underlyingToken != address(0));
+        require(UserPool(userPool).isReserveActive(_underlyingToken));
         require(!subscriptionTokens[_underlyingToken].active); // Require that this token has not already been approved
 
         PToken newPToken = new PToken();
@@ -210,13 +224,13 @@ contract PlanController is Initializable {
         subscriptionTokens[underlyingToken].globalScaledBalance += subscriptionUsers[_nftId].scaledBalance;
     }
 
-    function providerWithdrawal(address _underlyingToken) public onlyOwner {
+    function providerWithdrawal(address _underlyingToken) public onlyProvider {
         // Amount = super pToken balance of providerPool
         uint256 amount = subscriptionTokens[_underlyingToken].superToken.balanceOf(providerPool);
         // console.log("@PRW_AMT: %s", amount);
         // Convert 'amount' of aTokens from userPool back to underlyingToken
         // Send 'amount' to provider (owner)
-        UserPool(userPool).withdrawUnderlying(owner, _underlyingToken, amount);
+        UserPool(userPool).withdrawUnderlying(provider, _underlyingToken, amount);
         // Push liquidityIndex from Aave lendingPool.getReserveNormalizedIncome to subscriptionTokens[_underlyingToken].liquidityIndices
         subscriptionTokens[_underlyingToken].liquidityIndices.push(ILendingPool(lendingPoolAddressesProvider.getLendingPool()).getReserveNormalizedIncome(_underlyingToken));
         // Push block timestamp to subscriptionTokens[_underlyingToken].providerWithdrawalTimestamps
@@ -277,11 +291,11 @@ contract PlanController is Initializable {
         UserPool(userPool).withdrawUnderlying(subNFT.interestOwnerOf(_nftId), subUser.underlyingToken, realInterest);
     }
 
-    function isSubActive(uint256 _nftId) public view returns(bool) {
+    function isSubscriptionActive(uint256 _nftId) public view returns(bool) {
         return(block.timestamp < subscriptionUsers[_nftId].endTimestamp);
     }
 
-    function deleteStream(uint256 _nftId) public onlyOwner {
+    function deleteStream(uint256 _nftId) public onlyProvider {
         subscriptionUser memory subUser = subscriptionUsers[_nftId];
         subscriptionToken memory subToken = subscriptionTokens[subUser.underlyingToken];
         subUser.userStreamWallet.deleteStream(ISuperfluidToken(address(subToken.superToken)), address(providerPool));

@@ -83,6 +83,7 @@ describe("PlanFactory", function() {
     await planController.connect(addr1).withdrawInterest(0);
     await planController.providerWithdrawal(DAI_KOVAN_ADDRESS);
     await planController.connect(addr1).withdrawInterest(0);
+    await expect(planController.connect(addr1).withdrawInterest(0)).to.be.reverted;
 
   })
 
