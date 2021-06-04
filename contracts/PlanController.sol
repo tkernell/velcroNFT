@@ -146,7 +146,11 @@ contract PlanController is Initializable {
     }
 
     // After checks, create new PToken contract and new SuperToken contract.
-    
+    // /**
+    //  * @dev Approve new subscription payment token, deploy needed placeholder token contracts
+    //  * @param _underlyingToken Subscription payment token 
+    //  * @param _price Price of subscription
+    //  */
     function approveToken(address _underlyingToken, uint256 _price) public onlyProvider {
         require(_underlyingToken != address(0));
         require(UserPool(userPool).isReserveActive(_underlyingToken));
@@ -170,9 +174,10 @@ contract PlanController is Initializable {
             true);
     }
 
-    // Mint NFT, mint pToken, upgrade pToken to pTokenX, stream pTokenX from userPool to providerPool, transfer underlyingToken from user,
-    // convert underlyingToken to aToken and transfer to userPool, record parameters. Probably break this up into multiple transactions?
-    // Also, add nonreentrancy protections?
+    // /**
+    //  * @dev Initialize new subcription
+    //  * @param _underlyingToken Subscription payment token 
+    //  */
     function createSubscription(address _underlyingToken) public returns(uint256) {
         require(subscriptionTokens[_underlyingToken].active);
 
@@ -183,7 +188,11 @@ contract PlanController is Initializable {
         
         return(_nftId);
     }
-
+    
+    // /**
+    //  * @dev Pay for subscription and start immediately
+    //  * @param _nftId ID of user's subscription NFT
+    //  */
     function fundSubscription(uint256 _nftId) public onlyNftOwner(_nftId) {
         subscriptionUser memory subUser = subscriptionUsers[_nftId];
         address underlyingToken = subUser.underlyingToken;
@@ -223,7 +232,11 @@ contract PlanController is Initializable {
         // Add user's scaled balance to global scaled balance
         subscriptionTokens[underlyingToken].globalScaledBalance += subscriptionUsers[_nftId].scaledBalance;
     }
-
+    
+    // /**
+    //  * @dev Withdraw streamed funds
+    //  * @param _underlyingToken Subscription payment token 
+    //  */
     function providerWithdrawal(address _underlyingToken) public onlyProvider {
         // Amount = super pToken balance of providerPool
         uint256 amount = subscriptionTokens[_underlyingToken].superToken.balanceOf(providerPool);
@@ -240,7 +253,11 @@ contract PlanController is Initializable {
         // Subtract withdrawal amount from global scaled balance
         subscriptionTokens[_underlyingToken].globalScaledBalance -= getScaledBalance(_underlyingToken, amount);
     }
-
+    
+    // /**
+    //  * @dev Withdraw streamed funds
+    //  * @param _nftId ID of user's subscription NFT
+    //  */
     function withdrawInterest(uint256 _nftId) public onlyNftOwner(_nftId) {
         subscriptionUser memory subUser = subscriptionUsers[_nftId];
         subscriptionToken memory subToken = subscriptionTokens[subUser.underlyingToken];
