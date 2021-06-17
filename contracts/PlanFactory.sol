@@ -27,6 +27,7 @@ contract PlanFactory is UpgradeableBeacon {
     
     address[] public plans;
     uint256 internal _feePercentage;
+    uint256 internal _keeperFeePercentage;
     address public launcher;
     VelcroTreasury public treasury;
     
@@ -73,10 +74,26 @@ contract PlanFactory is UpgradeableBeacon {
     }
     
     /**
+     * @dev Returns keeper fee as percentage of accumulated interest
+     * @return uint256 Keeper fee percentage
+     */
+    function keeperFeePercentage() public view returns(uint256) {
+        return(_keeperFeePercentage);
+    }
+    
+    /**
      * @dev Change fee percentage
      * @param _newFeePercentage The new fee percentage
      */
     function updateFeePercentage(uint256 _newFeePercentage) external onlyOwner {
         _feePercentage = _newFeePercentage;
+    }
+    
+    /**
+     * @dev Change fee percentage
+     * @param _newKeeperFeePercentage The new fee percentage
+     */
+    function updateKeeperFeePercentage(uint256 _newKeeperFeePercentage) external onlyOwner {
+        _keeperFeePercentage = _newKeeperFeePercentage;
     }
 }
