@@ -4,8 +4,10 @@ const { time } = require("@openzeppelin/test-helpers");
 const precision = BigInt(1e18);
 const DAI_KOVAN_ADDRESS = "0xff795577d9ac8bd7d90ee22b6c1703490b6512fd";
 const AAVE_BRIDGE_ADDRESS = "0x4922EEBff2D2d82dd112B1D662Fd72B948a3C16E";
-const SUBSCRIPTION_PRICE = BigInt(2) * precision;
-const NDAYS = 200000;
+const SUBSCRIPTION_PRICE = BigInt(2) * precision / BigInt(1e3);
+// const NDAYS = 2000000;
+const PERIOD = 2000;
+const DURATION = 1000;
 
 
 
@@ -30,11 +32,12 @@ describe("PlanFactory", function() {
     await planFactory.updateFeePercentage(500);
     await planFactory.updateKeeperFeePercentage(500);
 
-    await planFactory.createPlan(NDAYS);
+    await planFactory.createPlan(PERIOD);
     let planControllerAddress = await planFactory.plans(0);
 
     planController = await PlanController.attach(planControllerAddress);
     await planController.approveToken(DAI_KOVAN_ADDRESS, SUBSCRIPTION_PRICE);
+    await planController.approveSubscriptionLength(DURATION);
 
     const ERC20Contract = await ethers.getContractFactory("ERC20");
     daiContract = await ERC20Contract.attach(DAI_KOVAN_ADDRESS);
@@ -89,11 +92,11 @@ describe("PlanFactory", function() {
   // });
 
   it("Test simple interactions", async function () {
-    await planController.connect(addr1).createSubscription(DAI_KOVAN_ADDRESS);
+    await planController.connect(addr1).createSubscription(DAI_KOVAN_ADDRESS, 0);
     await daiContract.connect(addr1).approve(planController.address, await daiContract.balanceOf(addr1.address));
     await planController.connect(addr1).fundSubscription(0);
 
-    await time.increase(10000);
+    await time.increase(1000000);
 
     await planController.providerWithdrawal(DAI_KOVAN_ADDRESS);
     await planController.connect(addr1).withdrawInterest(0);

@@ -65,7 +65,7 @@ contract PlanController is Initializable {
     ILauncher public launcher;
     address public treasury;
     address public provider;
-    uint256 public period;
+    uint256 public period; // periodIndex
     ISuperTokenFactory superTokenFactory;
     IConstantFlowAgreementV1 constantFlowAgreement;
     ILendingPool lendingPool;
@@ -87,6 +87,7 @@ contract PlanController is Initializable {
         address underlyingToken;
         uint256 startTimestamp;
         uint256 endTimestamp;
+        uint256 initialDuration;
         uint256 startLiquidityIndexArraySize;
         UserStreamWallet userStreamWallet;
         uint256 scaledBalance;
@@ -96,6 +97,8 @@ contract PlanController is Initializable {
     mapping(address => subscriptionToken) public subscriptionTokens;
     // Mapping from NFT Token ID to Subscription User
     mapping(uint256 => subscriptionUser) public subscriptionUsers;
+    uint256[] public subscriptionLengths;
+    uint256[] public availableSubscriptionLengthIndices;
 
     modifier onlyNftOwner(uint256 _nftId) {
         require(msg.sender == subNFT.interestOwnerOf(_nftId));
@@ -182,16 +185,34 @@ contract PlanController is Initializable {
         require(subscriptionTokens[_underlyingToken].active);
         subscriptionTokens[_underlyingToken].active = false;
     }
+    
+    function approveSubscriptionLength(uint256 _length) public onlyProvider {
+        uint256 _indicesCount = availableSubscriptionLengthIndices.length;
+        if (_indicesCount > 0) {
+            subscriptionLengths[availableSubscriptionLengthIndices[_indicesCount-1]] = _length;
+            availableSubscriptionLengthIndices.pop();
+        } else {
+            subscriptionLengths.push(_length);
+        }
+    }
+    
+    function removeSubscriptionLength(uint256 _lengthIndex) public onlyProvider {
+        require(subscriptionLengths[_lengthIndex] > 0);
+        subscriptionLengths[_lengthIndex] = 0;
+        availableSubscriptionLengthIndices.push(_lengthIndex);
+    }
 
     // /**
     //  * @dev Initialize new subcription
     //  * @param _underlyingToken Subscription payment token 
     //  */
-    function createSubscription(address _underlyingToken) public returns(uint256) {
+    function createSubscription(address _underlyingToken, uint256 _durationIndex) public returns(uint256) {
         require(subscriptionTokens[_underlyingToken].active);
+        require(subscriptionLengths[_durationIndex] > 0);
 
         // Mint subscription NFT
         uint256 _nftId = _initNewSubscriber(_underlyingToken);
+        subscriptionUsers[_nftId].initialDuration = subscriptionLengths[_durationIndex];
         
         emit SubscriptionCreated(msg.sender, _underlyingToken, _nftId);
         
@@ -209,8 +230,8 @@ contract PlanController is Initializable {
         require(subToken.active, "PlanController: token not approved");
 
         uint256 feePct = planFactory.feePercentage();
-        uint256 feeAmount = subToken.price * feePct / 10000;
-        uint256 _realAmount = subToken.price - feeAmount;
+        uint256 feeAmount = subToken.price * subUser.initialDuration * feePct / 10000;
+        uint256 _realAmount = subToken.price * subUser.initialDuration - feeAmount;
         
         subscriptionUsers[_nftId].realAmount = _realAmount;
 
@@ -235,7 +256,7 @@ contract PlanController is Initializable {
         // Record subscription start timestamp
         subscriptionUsers[_nftId].startTimestamp = block.timestamp;
         // Record subscription end timestamp
-        subscriptionUsers[_nftId].endTimestamp = block.timestamp + period;
+        subscriptionUsers[_nftId].endTimestamp = block.timestamp + period * subUser.initialDuration;
         // Record liquidityIndices array size
         subscriptionUsers[_nftId].startLiquidityIndexArraySize = subToken.liquidityIndices.length;
         // Add user's scaled balance to global scaled balance
@@ -353,7 +374,7 @@ contract PlanController is Initializable {
         // Generate new UserStreamWallet contract
         UserStreamWallet newUserStreamWallet = new UserStreamWallet(constantFlowAgreement, superfluidHost);
         // Save subscriber parameters
-        subscriptionUsers[nftId] = subscriptionUser(_underlyingToken, 0, 0, 0, newUserStreamWallet, 0, 0);
+        subscriptionUsers[nftId] = subscriptionUser(_underlyingToken, 0, 0, 0, 0, newUserStreamWallet, 0, 0);
         return(nftId);
     }
 
@@ -374,7 +395,7 @@ contract PlanController is Initializable {
     }
 
     function getFlowRate(uint256 _nftId) public view returns(int96){
-        return(int96(uint96(subscriptionUsers[_nftId].realAmount / period)));
+        return(int96(uint96(subscriptionUsers[_nftId].realAmount / (period * subscriptionUsers[_nftId].initialDuration))));
     }
     
     // function testDepositExtra(address underlyingToken, uint256 amount) external {
