@@ -92,19 +92,26 @@ describe("PlanFactory", function() {
   // });
 
   it("Test simple interactions", async function () {
-    await planController.connect(addr1).createSubscription(DAI_KOVAN_ADDRESS, 0);
+    await planController.connect(addr1).createSubscription(DAI_KOVAN_ADDRESS);
     await daiContract.connect(addr1).approve(planController.address, await daiContract.balanceOf(addr1.address));
-    await planController.connect(addr1).fundSubscription(0);
+    await planController.connect(addr1).fundSubscription(0, 0);
 
     await time.increase(1000000);
 
+    console.log("Provider withdrawal...");
     await planController.providerWithdrawal(DAI_KOVAN_ADDRESS);
+    console.log("Interest Transfer...");
     await planController.connect(addr1).withdrawInterest(0);
 
+    console.log("Time increasee..");
     await time.increase(10000);
 
-    await planController.connect(addr1).withdrawInterest(0);
+    console.log("Interest Transfer...");
+    // await planController.connect(addr1).withdrawInterest(0);
+    console.log("Provider withdrawal...");
     await planController.providerWithdrawal(DAI_KOVAN_ADDRESS);
+    console.log("Interest Transfer...");
+    await planController.connect(addr1).withdrawInterest(0);
 
   })
 

@@ -35,7 +35,18 @@ abstract contract IConstantFlowAgreementV1 {
         address receiver,
         bytes calldata ctx
     )
-        external virtual
+        external 
+        virtual
+        returns(bytes memory newCtx);
+        
+    function updateFlow(
+        ISuperfluidToken token,
+        address receiver,
+        int96 flowRate,
+        bytes calldata ctx
+    )
+        external
+        virtual
         returns(bytes memory newCtx);
 }
 
@@ -53,6 +64,20 @@ contract UserStreamWallet is Ownable {
             ISuperAgreement(address(flowAgreement)),
             abi.encodeWithSelector(
                 flowAgreement.createFlow.selector,
+                _token,
+                _receiver,
+                _flowRate,
+                new bytes(0)
+            ),
+            "0x"
+        );
+    }
+    
+    function updateStream(ISuperfluidToken _token, address _receiver, int96 _flowRate) public onlyOwner {
+        superfluidHost.callAgreement(
+            ISuperAgreement(address(flowAgreement)),
+            abi.encodeWithSelector(
+                flowAgreement.updateFlow.selector,
                 _token,
                 _receiver,
                 _flowRate,
