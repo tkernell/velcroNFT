@@ -45,7 +45,7 @@ contract PlanFactory is UpgradeableBeacon {
 
      /**
      * @dev Create a new subscription plan factory
-     * @param _period Length of subscription
+     * @param _period Subscription base length
      */
     function createPlan(uint256 _period) public {
         address newPlan = address(new BeaconProxy(address(this), ''));
