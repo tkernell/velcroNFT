@@ -15,9 +15,7 @@ interface IPlanController {
         address _superTokenFactory, 
         address _constantFlowAgreement, 
         address _superfluidHost,
-        address _lendingPool,
-        address _lendingPoolAddressProvider,
-        address _treasury
+        address _lendingPoolAddressProvider
         ) external;
 }
 
@@ -29,18 +27,16 @@ contract PlanFactory is UpgradeableBeacon {
     uint256 internal _feePercentage;
     uint256 internal _keeperFeePercentage;
     address public launcher;
-    VelcroTreasury public treasury;
+    address public treasury;
     
     address public superTokenFactory = 0xF5F666AC8F581bAef8dC36C7C8828303Bd4F8561;
     address public constantFlowAgreement = 0xECa8056809e7e8db04A8fF6e4E82cD889a46FE2F;
     address public superfluidHost = 0xF0d7d1D47109bA426B9D8A3Cde1941327af1eea3;
-    // address public lendingPool = 0xE0fBa4Fc209b4948668006B2bE61711b7f465bAe;
-    address public lendingPool = address(0);
     address public lendingPoolAddressProvider = 0x88757f2f99175387aB4C6a4b3067c77A695b0349;
     
     constructor(address _implementation) UpgradeableBeacon(_implementation) {
         launcher = address(new Launcher());
-        treasury = new VelcroTreasury();
+        treasury = address(new VelcroTreasury());
     }
 
      /**
@@ -56,9 +52,7 @@ contract PlanFactory is UpgradeableBeacon {
             superTokenFactory, 
             constantFlowAgreement,
             superfluidHost,
-            lendingPool,
-            lendingPoolAddressProvider,
-            address(treasury)
+            lendingPoolAddressProvider
             );
         plans.push(newPlan);
         
@@ -96,4 +90,31 @@ contract PlanFactory is UpgradeableBeacon {
     function updateKeeperFeePercentage(uint256 _newKeeperFeePercentage) external onlyOwner {
         _keeperFeePercentage = _newKeeperFeePercentage;
     }
+    
+    function transferTokensFromTreasury(address _token, address _to, uint256 _amount) external onlyOwner {
+        VelcroTreasury(treasury).transferToken(_token, _to, _amount);
+    }
+    
+    function updateTreasuryAddress(address _newTreasuryAddress) external onlyOwner {
+        treasury = _newTreasuryAddress;
+    }
+    
+    function updateLauncherAddress(address _newLauncherAddress) external onlyOwner {
+        launcher = _newLauncherAddress;
+    }
+    
+    function updateLendingPoolAddressProvider(address _newLendingPoolAddressProvider) external onlyOwner {
+        lendingPoolAddressProvider = _newLendingPoolAddressProvider;
+    }
+    
+    function updateSuperTokenFactory(address _newSuperTokenFactory) external onlyOwner {
+        superTokenFactory = _newSuperTokenFactory;
+    }
+    
+    function updateConstantFlowAgreement(address _newConstantFlowAgreement) external onlyOwner {
+        constantFlowAgreement = _newConstantFlowAgreement;
+    }
+    
+    
+    
 }

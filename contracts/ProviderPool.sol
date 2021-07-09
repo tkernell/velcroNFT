@@ -8,9 +8,6 @@ interface ISuperToken {
     function burn(uint256 amount, bytes calldata data) external;
 }
 
-// Super pTokens will be streamed here. The 'super pToken' balance of this contract will be used to determine how many
-// aTokens from the userPool to convert back to underlyingTokens and transfer to the service provider. After the provider
-// cashes out, those super pTokens are burned
 contract ProviderPool is Ownable {
     
     /**
