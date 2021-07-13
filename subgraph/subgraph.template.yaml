@@ -1,0 +1,28 @@
+specVersion: 0.0.2
+description: Velcro NFT
+schema:
+  file: ./src/schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: PlanController
+    network: {{network}}
+    source:
+      address: '{{planControllerAddress}}'
+      abi: PlanController
+      startBlock: {{startBlock}}
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.4
+      language: wasm/assemblyscript
+      entities:
+        - PlanController
+      abis:
+        - name: PlanController
+          file: ./src/abis/PlanController.json
+      eventHandlers:
+        - event: SubscriptionCreated(address,address,uint256)
+          handler: handleSubscriptionCreated
+        - event: SubscriptionFunded(address,address,uint256)
+          handler: handleSubscriptionFunded
+
+      file: ./src/mappings/planControllerMapping.ts

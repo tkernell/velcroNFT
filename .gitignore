@@ -9,3 +9,8 @@ hardhat.config.js
 
 #Config values
 .env
+
+#Subgraph artifacts
+subgraph/build
+subgraph/subgraph.yaml
+subgraph/src/types
