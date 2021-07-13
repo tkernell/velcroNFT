@@ -1,0 +1,5 @@
+type PlanController @entity {
+  id: ID!
+  network: String!
+  address: Bytes!
+}
