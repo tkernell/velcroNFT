@@ -54,10 +54,10 @@ interface IPlanFactory {
 }
 
 contract PlanController is Initializable {
-    
+
     event SubscriptionCreated(address _user, address _token, uint256 _nftId);
     event SubscriptionFunded(address _user, address _token, uint256 _nftId);
-    
+
     using WadRayMath for uint256;
     ISubscriptionNFT public subNFT;
     address public userPool;
@@ -104,12 +104,12 @@ contract PlanController is Initializable {
         require(msg.sender == subNFT.interestOwnerOf(_nftId));
         _;
     }
-    
+
     modifier onlyProvider {
         require(msg.sender == provider);
         _;
     }
-    
+
     // /**
     //  * @dev Initialized contract parameters and launches side contracts
     //  * @param _period Subscription period length in seconds
@@ -121,15 +121,15 @@ contract PlanController is Initializable {
     //  * @param _lendingPoolAddressProvider Aave lending pool address provider
     //  */
     function initialize(
-        uint256 _period, 
-        address _provider, 
-        address _launcher, 
-        address _superTokenFactory, 
-        address _constantFlowAgreement, 
+        uint256 _period,
+        address _provider,
+        address _launcher,
+        address _superTokenFactory,
+        address _constantFlowAgreement,
         address _superfluidHost,
         address _lendingPoolAddressProvider
         ) public initializer {
-            
+
         launcher = ILauncher(_launcher);
         period = _period;
         subNFT = ISubscriptionNFT(launcher.firstLaunch());
@@ -145,7 +145,7 @@ contract PlanController is Initializable {
 
     /**
      * @dev Approve new subscription payment token, deploy needed placeholder token contracts
-     * @param _underlyingToken Subscription payment token 
+     * @param _underlyingToken Subscription payment token
      * @param _price Price of subscription
      */
     function approveToken(address _underlyingToken, uint256 _price) public onlyProvider {
@@ -170,19 +170,19 @@ contract PlanController is Initializable {
             0,
             true);
     }
-    
+
     /**
      * @dev Remove subscription payment token
-     * @param _underlyingToken Subscription payment token 
+     * @param _underlyingToken Subscription payment token
      */
     function removeToken(address _underlyingToken) public onlyProvider {
         require(subscriptionTokens[_underlyingToken].active);
         subscriptionTokens[_underlyingToken].active = false;
     }
-    
+
     /**
     * @dev Change subscription price per period for a given token
-    * @param _underlyingToken Subscription payment token 
+    * @param _underlyingToken Subscription payment token
     * @param _newPrice New price per subscription period
     */
     function updateSubscriptionPrice(address _underlyingToken, uint256 _newPrice) public onlyProvider {
@@ -190,7 +190,7 @@ contract PlanController is Initializable {
         require(_newPrice > 0);
         subscriptionTokens[_underlyingToken].price = _newPrice;
     }
-    
+
     /**
      * @dev Set new subscription duration as number of periods
      * @param _numberOfPeriods Number of periods
@@ -204,9 +204,9 @@ contract PlanController is Initializable {
             subscriptionDurations.push(_numberOfPeriods);
         }
     }
-    
+
     /**
-     * @dev Remove subscription duration 
+     * @dev Remove subscription duration
      * @param _durationIndex Index of subscription duration in subscriptionDurations array
      */
     function removeSubscriptionDuration(uint256 _durationIndex) public onlyProvider {
@@ -217,7 +217,7 @@ contract PlanController is Initializable {
 
     // /**
     //  * @dev Initialize new subcription
-    //  * @param _underlyingToken Subscription payment token 
+    //  * @param _underlyingToken Subscription payment token
     //  */
     function createSubscription(address _underlyingToken) public returns(uint256) {
         require(subscriptionTokens[_underlyingToken].active);
@@ -226,12 +226,12 @@ contract PlanController is Initializable {
         // Mint subscription NFT
         uint256 _nftId = _initNewSubscriber(_underlyingToken);
         // subscriptionUsers[_nftId].initialDuration = subscriptionDurations[_durationIndex];
-        
+
         emit SubscriptionCreated(msg.sender, _underlyingToken, _nftId);
-        
+
         return(_nftId);
     }
-    
+
     /**
      * @dev Pay for new subscription or refill existing subscription
      * @param _nftId ID of user's subscription NFT
@@ -243,29 +243,29 @@ contract PlanController is Initializable {
         require(subscriptionDurations[_durationIndex] > 0);
         subscriptionToken storage subToken = subscriptionTokens[underlyingToken];
         require(subToken.active);
-        
+
         if(subUser.scaledBalance > 0) {
             rolloverInterest(_nftId);
-        } 
-        
+        }
+
         uint256 _duration = subscriptionDurations[_durationIndex];
         uint256 feePct = planFactory.feePercentage();
         uint256 feeAmount = subToken.price * _duration * feePct / 10000;
         uint256 _realAmount = subToken.price * _duration - feeAmount;
-        
+
         bool _isStreamActive = subToken.superToken.balanceOf(address(subUser.userStreamWallet)) > 0;
         // Mint, approve, upgrade, transfer pToken
         _initPTokens(subToken, _nftId, _realAmount);
-        
+
         // if(subUser.scaledBalance > 0) {
         //     rolloverInterest(_nftId);
-        // } 
-        
+        // }
+
         if(_isStreamActive) {
             subUser.initialDuration += _duration;
             subUser.realAmount += _realAmount;
             subUser.endTimestamp += period * _duration;
-            
+
             subUser.userStreamWallet.updateStream(
                 ISuperfluidToken(address(subToken.superToken)),
                 providerPool,
@@ -279,14 +279,14 @@ contract PlanController is Initializable {
             }
             subUser.initialDuration = _duration;
             subUser.realAmount = _realAmount;
-            
+
             subUser.userStreamWallet.createStream(
                 ISuperfluidToken(address(subToken.superToken)),
                 providerPool,
                 getFlowRate(_nftId)
             );
         }
-        
+
         // Transfer underlying token from user to userPool
         IERC20(underlyingToken).transferFrom(msg.sender, address(userPool), _realAmount);
         // Transfer fee to treasury
@@ -305,10 +305,10 @@ contract PlanController is Initializable {
         subToken.globalScaledBalance += getScaledBalance(underlyingToken, _realAmount);
         console.log("Duration: %s", subUser.endTimestamp - subUser.startTimestamp);
     }
-    
+
     /**
      * @dev Withdraw streamed funds
-     * @param _underlyingToken Subscription payment token 
+     * @param _underlyingToken Subscription payment token
      */
     function providerWithdrawal(address _underlyingToken) public onlyProvider {
         // Amount = super pToken balance of providerPool
@@ -326,7 +326,7 @@ contract PlanController is Initializable {
         // Subtract withdrawal amount from global scaled balance
         subscriptionTokens[_underlyingToken].globalScaledBalance -= getScaledBalance(_underlyingToken, amount);
     }
-    
+
     // /**
     //  * @dev Rollover interest
     //  * @param _nftId ID of subscription NFT to rollover
@@ -335,7 +335,7 @@ contract PlanController is Initializable {
         subscriptionUser memory subUser = subscriptionUsers[_nftId];
         subscriptionToken memory subToken = subscriptionTokens[subUser.underlyingToken];
         require(subUser.scaledBalance > 0);
-        
+
         uint256 adjustedScaledBalance = subUser.scaledBalance;
         uint256 i = subUser.startLiquidityIndexArraySize;
         uint256 time0 = subUser.startTimestamp;
@@ -366,7 +366,7 @@ contract PlanController is Initializable {
             // adjustedScaledBalance = adjustedScaledBalance - interest.rayDiv(currentLiquidityIndex);
             console.log("Interest Case C");
         }
-        
+
         // Get real interest to withdraw
         // uint256 pTokenSupply = IERC20(address(subToken.superToken)).totalSupply();
         // uint256 aTokenBalance = IERC20(UserPool(userPool).getReserveInterestToken(subUser.underlyingToken)).balanceOf(userPool);
@@ -378,38 +378,30 @@ contract PlanController is Initializable {
         console.log("@GLB_BAL: %s", subToken.globalScaledBalance.rayMul(currentLiquidityIndex));
         console.log("@USR_BAL: %s", adjustedScaledBalance.rayMul(currentLiquidityIndex));
         interest = interest * 5 / 10;
-        uint256 realInterest = interest * (IERC20(UserPool(userPool).getReserveInterestToken(subUser.underlyingToken)).balanceOf(userPool) - 
+        uint256 realInterest = interest * (IERC20(UserPool(userPool).getReserveInterestToken(subUser.underlyingToken)).balanceOf(userPool) -
             IERC20(address(subToken.superToken)).totalSupply()) / (subToken.globalScaledBalance.rayMul(currentLiquidityIndex) - IERC20(address(subToken.superToken)).totalSupply());
-        
-        // uint256 realInterest = interest;
         uint256 keeperFee = realInterest * planFactory.keeperFeePercentage() / 10000;
         console.log("@RealInt: %s", realInterest);
-        
-        // console.log("@GLB_SBL: %s", subscriptionTokens[subUser.underlyingToken].globalScaledBalance);
-        
+
         console.log("@KPR_FEE: %s", keeperFee);
-        
+
         if(expired) {
             subscriptionUsers[_nftId].scaledBalance = 0;
         } else {
             subscriptionUsers[_nftId].scaledBalance = adjustedScaledBalance - getScaledBalance(subUser.underlyingToken, (realInterest * planFactory.keeperFeePercentage() / 10000));
         }
-        
+
         subscriptionUsers[_nftId].startTimestamp = time0;
         subscriptionUsers[_nftId].endTimestamp += (realInterest-keeperFee) / (uint256(int256(getFlowRate(_nftId))));
         subscriptionUsers[_nftId].startLiquidityIndexArraySize = subToken.liquidityIndices.length;
         subscriptionTokens[subUser.underlyingToken].globalScaledBalance -= getScaledBalance(subUser.underlyingToken, (realInterest * planFactory.keeperFeePercentage() / 10000));
         UserPool(userPool).withdrawUnderlying(msg.sender, subUser.underlyingToken, keeperFee);
-        
-        subToken.pToken.mint(address(this), realInterest-keeperFee);
+
+        subToken.pToken.mint(address(this), (realInterest-keeperFee));
         subToken.pToken.approve(address(subToken.superToken), realInterest-keeperFee);
         subToken.superToken.upgrade(realInterest-keeperFee);
         subToken.superToken.transfer(address(subUser.userStreamWallet), realInterest-keeperFee);
-        
-        // console.log("@EXT_TME: %s", (realInterest-keeperFee) / (uint256(int256(getFlowRate(_nftId)))));
-        // console.log("@FLW_RAT: %s", (uint256(int256(getFlowRate(_nftId)))));
-        // console.log("@REALAMT: %s", subUser.realAmount);
-        // console.log("@PERIOD : %s", period);
+
     }
 
     function isSubscriptionActive(uint256 _nftId) public view returns(bool) {
